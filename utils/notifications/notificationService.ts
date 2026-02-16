@@ -2,7 +2,6 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { createAudioPlayer } from 'expo-audio';
 import { ScheduleBlock } from '@/constants/types/schedule';
-import { useSettingsStore } from '@/store/settingsStore';
 
 // Configure notification categories for actions
 export async function setupNotificationCategories() {
@@ -11,16 +10,6 @@ export async function setupNotificationCategories() {
       identifier: 'START_NOW',
       buttonTitle: 'Start Now',
       options: { opensAppToForeground: true },
-    },
-    {
-      identifier: 'SNOOZE_10',
-      buttonTitle: 'Snooze 10 min',
-      options: { opensAppToForeground: false },
-    },
-    {
-      identifier: 'DISMISS',
-      buttonTitle: 'Dismiss',
-      options: { opensAppToForeground: false, isDestructive: true },
     },
   ]);
 }
@@ -41,10 +30,12 @@ export async function requestNotificationPermissions() {
   
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
+      name: 'Default',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
+      enableVibrate: true,
       lightColor: '#6366F1',
+      showBadge: true,
     });
   }
   
@@ -59,121 +50,154 @@ function mapToExpoWeekday(dayIndex: number) {
 // Schedule notifications for a block
 export async function scheduleSessionNotifications(
   session: ScheduleBlock, 
-  reminderMinutes: number
+  reminderMinutes: number,
+  notificationSound: boolean,
+  notificationVibration: boolean
 ) {
   if (!session.relatedGoalId) return [];
 
   const ids: string[] = [];
+  const now = new Date();
   
-  // Calculate base trigger (start of session)
+  // Calculate relative occurrence
   const hour = Math.floor(session.startHour);
   const minute = Math.round((session.startHour % 1) * 60);
-  const weekday = mapToExpoWeekday(session.dayIndex);
-
-  // 1. Pre-session reminder
-  // We need to calculate the correct day relative to today to find the weekday
-  // But Expo uses absolute weekdays. 
-  // Let's create a date for 'this week's' occurrence of the session
-  const now = new Date();
-  const sessionDate = new Date();
-  const daysUntil = (session.dayIndex - (now.getDay() === 0 ? 6 : now.getDay() - 1) + 7) % 7;
+  
+  // Find the next occurrence of this session
+  let sessionDate = new Date();
+  const currentDay = now.getDay() === 0 ? 6 : now.getDay() - 1; // 0=Mon
+  let daysUntil = (session.dayIndex - currentDay + 7) % 7;
+  
   sessionDate.setDate(now.getDate() + daysUntil);
   sessionDate.setHours(hour, minute, 0, 0);
 
+  // If session is today but time already passed, move to next week
+  if (sessionDate.getTime() <= now.getTime()) {
+    sessionDate.setDate(sessionDate.getDate() + 7);
+  }
+
+  const scheduleLocal = async (
+    title: string, 
+    body: string, 
+    date: Date, 
+    type: string, 
+    sound: boolean = true, 
+    vibrate: boolean = true
+  ) => {
+    const secondsFromNow = Math.round((date.getTime() - now.getTime()) / 1000);
+    
+    // Safety check: if time already passed, don't schedule
+    if (secondsFromNow <= 0 && type !== 'START') return null;
+
+    // For Android/Interval-based, we use seconds from now. 
+    // This is more reliable than DATE trigger for some Expo versions.
+    const trigger: any = Platform.OS === 'android' 
+      ? {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: Math.max(1, secondsFromNow),
+        }
+      : {
+          type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+          weekday: date.getDay() + 1, // Sun=0 in JS, Sun=1 in Expo
+          hour: date.getHours(),
+          minute: date.getMinutes(),  
+          repeats: true,
+        };
+
+    try {
+      return await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          categoryIdentifier: 'SESSION_REPRODUCTION',
+          data: { sessionId: session.id, type },
+          sound: notificationSound ? sound : false,
+          vibrate: notificationVibration ? (vibrate ? [0, 250, 250, 250] : undefined) : undefined,
+        },
+        trigger,
+      });
+    } catch (e) {
+      console.warn(`[NotificationService] Failed to schedule ${type}:`, e);
+      return null;
+    }
+  };
+
+  // 1. Pre-session reminder
   const reminderDate = new Date(sessionDate.getTime() - reminderMinutes * 60000);
-  
-  const reminderId = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: `Upcoming: ${session.label}`,
-      body: `Starting in ${reminderMinutes} minutes. Ready to focus?`,
-      categoryIdentifier: 'SESSION_REPRODUCTION',
-      data: { sessionId: session.id, type: 'REMINDER' },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
-      weekday: mapToExpoWeekday(reminderDate.getDay() === 0 ? 6 : reminderDate.getDay() - 1),
-      hour: reminderDate.getHours(),
-      minute: reminderDate.getMinutes(),
-      repeats: true,
-    },
-  });
-  ids.push(reminderId);
+  if (reminderDate.getTime() > now.getTime()) {
+      const rid = await scheduleLocal(
+        `Upcoming: ${session.label}`,
+        `Starting in ${reminderMinutes} minutes. Ready to focus?`,
+        reminderDate,
+        'REMINDER',
+        true,
+        true
+      );
+      if (rid) ids.push(rid);
+  }
 
   // 2. Session start notification
-  const startId = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: `Time to focus on ${session.label}`,
-      body: `Duration: ${Math.round(session.duration * 60)} minutes. Let's go!`,
-      categoryIdentifier: 'SESSION_REPRODUCTION',
-      data: { sessionId: session.id, type: 'START' },
-      sound: true,
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
-      weekday,
-      hour,
-      minute,
-      repeats: true,
-    },
-  });
-  ids.push(startId);
+  const sid = await scheduleLocal(
+    `Time to focus on ${session.label}`,
+    `Duration: ${Math.round(session.duration * 60)} minutes. Let's go!`,
+    sessionDate,
+    'START',
+    true,
+    true
+  );
+  if (sid) ids.push(sid);
 
-  // 3. Session end notification
+  // 3. Periodic "Nag" reminders (First 30% of session)
+  const sessionDurationMs = session.duration * 3600000;
+  const nagLimitMs = sessionDurationMs * 0.3;
+  const nagIntervalMs = 5 * 60000; // Nag every 5 minutes
+
+  for (let offsetMs = nagIntervalMs; offsetMs <= nagLimitMs; offsetMs += nagIntervalMs) {
+      const nagDate = new Date(sessionDate.getTime() + offsetMs);
+      const nagId = await scheduleLocal(
+        `Still haven't started?`,
+        `Your session "${session.label}" is currently active. Don't lose your focus!`,
+        nagDate,
+        'NAG',
+        true,
+        true
+      );
+      if (nagId) ids.push(nagId);
+  }
+
+  // 4. Session end notification
   const endHour = Math.floor(session.startHour + session.duration);
   const endMin = Math.round(((session.startHour + session.duration) % 1) * 60);
-  
-  const endId = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: `Session Complete!`,
-      body: `Great job focusing on ${session.label}. Take a break!`,
-      data: { sessionId: session.id, type: 'END' },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
-      weekday,
-      hour: endHour,
-      minute: endMin,
-      repeats: true,
-    },
-  });
-  ids.push(endId);
+  const endDate = new Date(sessionDate);
+  endDate.setHours(endHour, endMin, 0, 0);
 
-  // 4. Missed session reminder (15 min after start)
-  const missedDate = new Date(sessionDate.getTime() + 15 * 60000);
-
-  const missedId = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: `Missed your session?`,
-      body: `You should have started "${session.label}" 15 minutes ago. It's not too late!`,
-      categoryIdentifier: 'SESSION_REPRODUCTION',
-      data: { sessionId: session.id, type: 'MISSED' },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
-      weekday: mapToExpoWeekday(missedDate.getDay() === 0 ? 6 : missedDate.getDay() - 1),
-      hour: missedDate.getHours(),
-      minute: missedDate.getMinutes(),
-      repeats: true,
-    },
-  });
-  ids.push(missedId);
+  const eid = await scheduleLocal(
+    `Session Complete!`,
+    `Great job focusing on ${session.label}. Take a break!`,
+    endDate,
+    'END',
+    true,
+    true
+  );
+  if (eid) ids.push(eid);
 
   return ids;
 }
 
 // Cancel all notifications for a list of blocks
 export async function cancelSessionNotifications(blockIds: string[]) {
-  // Expo doesn't support batch cancel by data, we have to fetch all and filter or track IDs
-  // For simplicity, we'll cancel all and let the store or a higher level manage it if needed
-  // Alternatively, we can use identifiers.
-  // Actually, we should probably just clear all and re-schedule for efficiency when many changes happen
   await Notifications.cancelAllScheduledNotificationsAsync();
 }
 
 // Re-schedule all notifications for all focus sessions
-export async function refreshAllNotifications(blocks: ScheduleBlock[], reminderMinutes: number) {
-  const { settings } = useSettingsStore.getState();
-  if (!settings.notificationsEnabled) {
+export async function refreshAllNotifications(
+    blocks: ScheduleBlock[], 
+    reminderMinutes: number,
+    notificationsEnabled: boolean,
+    notificationSound: boolean,
+    notificationVibration: boolean
+) {
+  if (!notificationsEnabled) {
       await Notifications.cancelAllScheduledNotificationsAsync();
       return;
   }
@@ -182,14 +206,13 @@ export async function refreshAllNotifications(blocks: ScheduleBlock[], reminderM
   
   const focusSessions = blocks.filter(b => b.relatedGoalId !== undefined);
   for (const session of focusSessions) {
-    await scheduleSessionNotifications(session, reminderMinutes);
+    await scheduleSessionNotifications(session, reminderMinutes, notificationSound, notificationVibration);
   }
 }
 
 // Utility to play sound immediately
-export async function playSessionSound() {
-  const { settings } = useSettingsStore.getState();
-  if (!settings.notificationSound) return;
+export async function playSessionSound(notificationSound: boolean) {
+  if (!notificationSound) return;
 
   try {
     const player = createAudioPlayer(require('@/assets/sounds/complete.mp3'));
@@ -198,7 +221,7 @@ export async function playSessionSound() {
     player.play();
 
     // Release after playing
-    const subscription = player.addListener('playbackStatusUpdate', (status) => {
+    const subscription = player.addListener('playbackStatusUpdate', (status: any) => {
       if (status.didJustFinish) {
         player.release();
         subscription.remove();
@@ -213,7 +236,9 @@ export async function playSessionSound() {
 export async function schedulePhaseNotification(
   phase: string, 
   seconds: number, 
-  goalName: string
+  goalName: string,
+  notificationSound: boolean,
+  notificationVibration: boolean
 ) {
   // Cancel previous phase notifications first
   await Notifications.cancelAllScheduledNotificationsAsync();
@@ -224,8 +249,8 @@ export async function schedulePhaseNotification(
       body: phase === 'work' 
         ? `You finished a work block for ${goalName}.` 
         : `Ready for your next focus block?`,
-      sound: true,
-      vibrate: [0, 500, 200, 500],
+      sound: notificationSound,
+      vibrate: notificationVibration ? [0, 500, 200, 500] : undefined,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,

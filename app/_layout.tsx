@@ -15,7 +15,6 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 // Configure foreground notifications
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
     shouldShowBanner: true,
@@ -35,30 +34,40 @@ export default function RootLayout() {
       try {
         await requestNotificationPermissions();
         await setupNotificationCategories();
+        // Import and call syncNotifications to refresh triggers on app boot
+        const { syncNotifications } = await import('@/store/syncNotifications');
+        await syncNotifications();
       } catch (error) {
         console.warn('[RootLayout] Notification init failed:', error);
       }
     }
     initNotifications();
 
-    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
       const { actionIdentifier, notification } = response;
 
-      if (actionIdentifier === 'SNOOZE_10') {
-        Notifications.scheduleNotificationAsync({
-          content: {
-            title: `Snooze finished: ${notification.request.content.title}`,
-            body: `10 minutes are up. Time to focus!`,
-            categoryIdentifier: 'SESSION_REPRODUCTION',
-            data: notification.request.content.data,
-          },
-          trigger: { 
-            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-            seconds: 600 
-          },
-        });
-      } else if (actionIdentifier === 'START_NOW') {
-          Alert.alert("Focus Flow", "Session started from notification!");
+      if (actionIdentifier === 'START_NOW' || actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
+        const sessionId = notification.request.content.data?.sessionId;
+        if (!sessionId) return;
+
+        const { blocks } = (await import('@/store/scheduleStore')).useScheduleStore.getState();
+        const { startSession } = (await import('@/store/focusStore')).useFocusStore.getState();
+        const { settings } = (await import('@/store/settingsStore')).useSettingsStore.getState();
+
+        const session = blocks.find(b => b.id === sessionId);
+        if (session) {
+          startSession({
+            goalId: session.relatedGoalId || 'default',
+            goalName: session.label,
+            workDuration: settings.pomodoroWorkDuration,
+            breakDuration: settings.pomodoroBreakDuration,
+            longBreakDuration: settings.pomodoroLongBreakDuration,
+            sessionsBeforeLongBreak: settings.pomodoroSessionsBeforeLongBreak,
+            totalPomodoros: Math.ceil((session.duration * 60) / settings.pomodoroWorkDuration),
+          });
+          const { router } = await import('expo-router');
+          router.push('/focus/active');
+        }
       }
     });
 

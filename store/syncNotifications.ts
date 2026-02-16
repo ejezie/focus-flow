@@ -7,9 +7,11 @@ export const syncNotifications = async () => {
   const { blocks } = useScheduleStore.getState();
   const { settings } = useSettingsStore.getState();
   
-  if (settings.notificationsEnabled) {
-    await refreshAllNotifications(blocks, settings.reminderMinutes);
-  } else {
-    await Notifications.cancelAllScheduledNotificationsAsync();
-  }
+  await refreshAllNotifications(
+    blocks, 
+    settings.reminderMinutes,
+    settings.notificationsEnabled,
+    settings.notificationSound,
+    settings.notificationVibration
+  );
 };

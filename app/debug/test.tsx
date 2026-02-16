@@ -9,6 +9,7 @@ import { useStatsStore } from '@/store/statsStore';
 import { useGoalStore } from '@/store/goalStore';
 import { useFocusStore } from '@/store/focusStore';
 import { useScheduleStore } from '@/store/scheduleStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { playSessionSound, schedulePhaseNotification } from '@/utils/notifications/notificationService';
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
@@ -22,6 +23,7 @@ export default function DebugTestScreen() {
   const { goals } = useGoalStore();
   const activeSession = useFocusStore(s => s.activeSession);
   const { blocks } = useScheduleStore();
+  const { settings } = useSettingsStore();
 
   const handleAddMockSessions = () => {
     if (goals.length === 0) {
@@ -49,13 +51,19 @@ export default function DebugTestScreen() {
             trigger: null,
         });
     } else {
-        await schedulePhaseNotification('work', delaySeconds, 'Test Goal');
+        await schedulePhaseNotification(
+            'work', 
+            delaySeconds, 
+            'Test Goal', 
+            settings.notificationSound, 
+            settings.notificationVibration
+        );
         Alert.alert("Scheduled", `Notification will appear in ${delaySeconds} seconds.`);
     }
   };
 
   const handleTestSound = async () => {
-    await playSessionSound();
+    await playSessionSound(settings.notificationSound);
   };
 
   return (
@@ -109,6 +117,45 @@ export default function DebugTestScreen() {
           >
             <IconSymbol name="timer" size={24} color="#3B82F6" />
             <Text style={[styles.testLabel, { color: theme.text }]}>Trigger Notification in 10s</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.testCard, { backgroundColor: theme.card }]}
+            onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                // We use a mock session to test the full session notification logic
+                const mockSession: any = {
+                    id: 'test-session',
+                    label: 'Test Focus Block',
+                    startHour: new Date().getHours() + (new Date().getMinutes() + 1) / 60,
+                    duration: 1,
+                    dayIndex: new Date().getDay() === 0 ? 6 : new Date().getDay() - 1,
+                    relatedGoalId: 'test-goal'
+                };
+                
+                // This will trigger all the logic in scheduleSessionNotifications
+                // but we only care about the immediate-ish one.
+                // For direct testing of sound/vibration with user settings:
+                const { settings } = require('@/store/settingsStore').useSettingsStore.getState();
+                
+                await Notifications.scheduleNotificationAsync({
+                   content: {
+                     title: "Focus Flow Test",
+                     body: "Sound/Vibration test (Respecting your settings)",
+                     sound: settings.notificationSound,
+                     vibrate: settings.notificationVibration ? [0, 500, 200, 500] : undefined,
+                   },
+                   trigger: { 
+                     type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+                     seconds: 5 
+                   } as any,
+                });
+                
+                Alert.alert("Scheduled", "Test notification in 5 seconds. Please background the app now!");
+            }}
+          >
+            <IconSymbol name="checkmark.seal.fill" size={24} color={theme.primary} />
+            <Text style={[styles.testLabel, { color: theme.text }]}>Test Full Focus Reminder (5s)</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 

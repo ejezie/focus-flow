@@ -10,6 +10,8 @@ import { CircularTimer } from '@/components/focus/CircularTimer';
 import * as Haptics from 'expo-haptics';
 import { useStatsStore } from '@/store/statsStore';
 import { playSessionSound } from '@/utils/notifications/notificationService';
+import { useKeepAwake } from 'expo-keep-awake';
+import { useSettingsStore } from '@/store/settingsStore';
 
 export default function ActiveFocusScreen() {
   const router = useRouter();
@@ -24,6 +26,9 @@ export default function ActiveFocusScreen() {
   const completeSession = useFocusStore(s => s.completeSession);
   const endSession = useFocusStore(s => s.endSession);
   const recordSession = useStatsStore(s => s.recordSession);
+  const { settings } = useSettingsStore();
+
+  useKeepAwake();
 
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const hasTriggeredCompletion = React.useRef(false);
@@ -81,7 +86,7 @@ export default function ActiveFocusScreen() {
   const handlePhaseComplete = useCallback(async () => {
     console.log('[FocusActive] handlePhaseComplete called, phase:', activeSession?.phase);
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await playSessionSound();
+    await playSessionSound(settings.notificationSound);
     
     if (activeSession?.phase === 'work') {
       console.log('[FocusActive] Phase complete — recording full pomodoro:', activeSession.workDuration, 'min');
@@ -123,14 +128,9 @@ export default function ActiveFocusScreen() {
 
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
-    
-    // If we're already at zero, don't keep ticking
-    if (remainingSeconds <= 0 && !activeSession.isPaused) {
-        clearInterval(interval);
-    }
 
     return () => clearInterval(interval);
-  }, [activeSession?.isPaused, activeSession?.phase, activeSession?.startTime, activeSession?.duration, activeSession?.isFinished, handlePhaseComplete, remainingSeconds]);
+  }, [activeSession?.isPaused, activeSession?.phase, activeSession?.startTime, activeSession?.duration, activeSession?.isFinished, handlePhaseComplete]);
 
   const handleFinishAndLeave = useCallback(() => {
     console.log('[FocusActive] handleFinishAndLeave — session complete, cleaning up');
