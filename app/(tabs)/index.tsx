@@ -114,7 +114,7 @@ export default function HomeScreen() {
             <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>FocusFlow</Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity 
+            {/* <TouchableOpacity 
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 router.push('/debug/test' as any);
@@ -122,7 +122,7 @@ export default function HomeScreen() {
               style={[styles.settingsBtn, { backgroundColor: theme.card }]}
             >
                 <IconSymbol name="hammer.fill" size={20} color={theme.icon} />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             <TouchableOpacity 
               onPress={() => {
