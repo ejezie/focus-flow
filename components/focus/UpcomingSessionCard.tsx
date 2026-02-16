@@ -14,12 +14,17 @@ interface UpcomingSessionCardProps {
 export function UpcomingSessionCard({ session, onStart }: UpcomingSessionCardProps) {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
+  
+  const currentHour = (new Date().getHours()) + (new Date().getMinutes() / 60);
+  const isInProgress = session.startHour <= currentHour && (session.startHour + session.duration) > currentHour;
 
   return (
     <View style={[styles.card, { backgroundColor: theme.card, borderColor: session.color }]}>
       <View style={styles.content}>
         <View style={styles.info}>
-          <Text style={[styles.label, { color: theme.icon }]}>UPCOMING SESSION</Text>
+          <Text style={[styles.label, { color: theme.icon }]}>
+            {isInProgress ? 'IN PROGRESS' : 'UPCOMING SESSION'}
+          </Text>
           <Text style={[styles.title, { color: theme.text }]}>{session.label}</Text>
           <View style={styles.timeRow}>
             <IconSymbol name="clock.fill" size={14} color={session.color} />
@@ -34,8 +39,8 @@ export function UpcomingSessionCard({ session, onStart }: UpcomingSessionCardPro
             onPress={onStart}
             activeOpacity={0.8}
         >
-            <IconSymbol name="paperplane.fill" size={20} color="#FFF" />
-            <Text style={styles.startButtonText}>Start</Text>
+            <IconSymbol name={isInProgress ? "play.fill" : "paperplane.fill"} size={20} color="#FFF" />
+            <Text style={styles.startButtonText}>{isInProgress ? 'Focus' : 'Start'}</Text>
         </TouchableOpacity>
       </View>
     </View>

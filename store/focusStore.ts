@@ -156,10 +156,19 @@ export const useFocusStore = create<FocusState>()(
         const { activeSession } = get();
         if (!activeSession) return;
 
+        const additionalSeconds = minutes * 60;
+        const updates: Partial<ActiveSession> = {
+          duration: activeSession.duration + additionalSeconds,
+        };
+
+        if (activeSession.isPaused && activeSession.remainingTimeAtPause !== undefined) {
+          updates.remainingTimeAtPause = activeSession.remainingTimeAtPause + additionalSeconds;
+        }
+
         set({
           activeSession: {
             ...activeSession,
-            duration: activeSession.duration + minutes * 60,
+            ...updates,
           },
         });
       },

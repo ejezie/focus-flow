@@ -53,6 +53,14 @@ export default function FocusScreen() {
   );
 
   const upcomingSession = useMemo(() => {
+      // 1. Check for session in progress
+      const inProgress = todaySessions.find(s => 
+        s.startHour <= currentHour && 
+        (s.startHour + s.duration) > currentHour
+      );
+      if (inProgress) return inProgress;
+
+      // 2. Otherwise get next upcoming
       const upcoming = todaySessions
           .filter(s => s.startHour > currentHour)
           .sort((a, b) => a.startHour - b.startHour);

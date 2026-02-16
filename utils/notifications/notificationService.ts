@@ -1,6 +1,8 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { createAudioPlayer } from 'expo-audio';
 import { ScheduleBlock } from '@/constants/types/schedule';
+import { useSettingsStore } from '@/store/settingsStore';
 
 // Configure notification categories for actions
 export async function setupNotificationCategories() {
@@ -170,11 +172,40 @@ export async function cancelSessionNotifications(blockIds: string[]) {
 
 // Re-schedule all notifications for all focus sessions
 export async function refreshAllNotifications(blocks: ScheduleBlock[], reminderMinutes: number) {
+  const { settings } = useSettingsStore.getState();
+  if (!settings.notificationsEnabled) {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+      return;
+  }
+
   await Notifications.cancelAllScheduledNotificationsAsync();
   
   const focusSessions = blocks.filter(b => b.relatedGoalId !== undefined);
   for (const session of focusSessions) {
     await scheduleSessionNotifications(session, reminderMinutes);
+  }
+}
+
+// Utility to play sound immediately
+export async function playSessionSound() {
+  const { settings } = useSettingsStore.getState();
+  if (!settings.notificationSound) return;
+
+  try {
+    const player = createAudioPlayer(require('@/assets/sounds/complete.mp3'));
+    
+    // Play immediately
+    player.play();
+
+    // Release after playing
+    const subscription = player.addListener('playbackStatusUpdate', (status) => {
+      if (status.didJustFinish) {
+        player.release();
+        subscription.remove();
+      }
+    });
+  } catch (error) {
+    console.warn('[NotificationService] Error playing sound:', error);
   }
 }
 

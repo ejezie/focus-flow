@@ -9,6 +9,7 @@ import { useFocusStore } from '@/store/focusStore';
 import { CircularTimer } from '@/components/focus/CircularTimer';
 import * as Haptics from 'expo-haptics';
 import { useStatsStore } from '@/store/statsStore';
+import { playSessionSound } from '@/utils/notifications/notificationService';
 
 export default function ActiveFocusScreen() {
   const router = useRouter();
@@ -25,50 +26,21 @@ export default function ActiveFocusScreen() {
   const recordSession = useStatsStore(s => s.recordSession);
 
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const hasTriggeredCompletion = React.useRef(false);
 
-  // Timer tick
+  // Reset completion trigger when phase changes
   useEffect(() => {
-    if (!activeSession || activeSession.isFinished) return;
+    hasTriggeredCompletion.current = false;
+  }, [activeSession?.phase]);
 
-    const updateTimer = () => {
-      if (activeSession.isPaused) {
-        setRemainingSeconds(activeSession.remainingTimeAtPause || 0);
-        return;
-      }
-      const elapsed = (Date.now() - activeSession.startTime) / 1000;
-      const remaining = Math.max(0, activeSession.duration - elapsed);
-      setRemainingSeconds(remaining);
-
-      if (remaining <= 0) {
-        handlePhaseComplete();
-      }
-    };
-
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
-  }, [activeSession?.isPaused, activeSession?.phase, activeSession?.startTime, activeSession?.duration, activeSession?.isFinished]);
-
-  const handlePhaseComplete = useCallback(async () => {
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    
-    if (activeSession?.phase === 'work') {
-      console.log('[FocusActive] Phase complete — recording full pomodoro:', activeSession.workDuration, 'min');
-      recordSession({ 
-        goalId: activeSession.goalId, 
-        minutes: activeSession.workDuration 
-      });
+  const handleMinimize = useCallback(() => {
+    console.log('[FocusActive] handleMinimize — going back with session still running');
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
     }
-
-    Alert.alert(
-      "Phase Complete!",
-      activeSession?.phase === 'work' ? "Time for a break!" : "Back to work!",
-      [
-        { text: "Continue", onPress: () => nextPhase() },
-        { text: "End Session", onPress: () => handleEndEarly(), style: 'destructive' }
-      ]
-    );
-  }, [activeSession?.phase, activeSession?.goalId, activeSession?.workDuration]);
+  }, [router]);
 
   // Calculate how many minutes the user actually focused in the current phase
   const getElapsedMinutes = useCallback(() => {
@@ -88,7 +60,7 @@ export default function ActiveFocusScreen() {
       }
     }
     completeSession();
-  }, [activeSession, getElapsedMinutes]);
+  }, [activeSession, getElapsedMinutes, recordSession, completeSession]);
 
   const handleStopAndExit = useCallback(() => {
     if (activeSession?.phase === 'work') {
@@ -104,16 +76,61 @@ export default function ActiveFocusScreen() {
     } else {
       router.replace('/(tabs)/focus');
     }
-  }, [activeSession, getElapsedMinutes]);
+  }, [activeSession, getElapsedMinutes, recordSession, endSession, router]);
 
-  const handleMinimize = useCallback(() => {
-    console.log('[FocusActive] handleMinimize — going back with session still running');
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/(tabs)');
+  const handlePhaseComplete = useCallback(async () => {
+    console.log('[FocusActive] handlePhaseComplete called, phase:', activeSession?.phase);
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await playSessionSound();
+    
+    if (activeSession?.phase === 'work') {
+      console.log('[FocusActive] Phase complete — recording full pomodoro:', activeSession.workDuration, 'min');
+      recordSession({ 
+        goalId: activeSession.goalId, 
+        minutes: activeSession.workDuration 
+      });
     }
-  }, []);
+
+    Alert.alert(
+      "Phase Complete!",
+      activeSession?.phase === 'work' ? "Time for a break!" : "Back to work!",
+      [
+        { text: "Continue", onPress: () => nextPhase() },
+        { text: "End Session", onPress: () => handleEndEarly(), style: 'destructive' }
+      ],
+      { cancelable: false }
+    );
+  }, [activeSession?.phase, activeSession?.goalId, activeSession?.workDuration, nextPhase, recordSession, handleEndEarly]);
+
+  // Timer tick
+  useEffect(() => {
+    if (!activeSession || activeSession.isFinished) return;
+
+    const updateTimer = () => {
+      if (activeSession.isPaused) {
+        setRemainingSeconds(activeSession.remainingTimeAtPause || 0);
+        return;
+      }
+      const elapsed = (Date.now() - activeSession.startTime) / 1000;
+      const remaining = Math.max(0, activeSession.duration - elapsed);
+      setRemainingSeconds(remaining);
+
+      if (remaining <= 0 && !hasTriggeredCompletion.current) {
+        hasTriggeredCompletion.current = true;
+        handlePhaseComplete();
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    
+    // If we're already at zero, don't keep ticking
+    if (remainingSeconds <= 0 && !activeSession.isPaused) {
+        clearInterval(interval);
+    }
+
+    return () => clearInterval(interval);
+  }, [activeSession?.isPaused, activeSession?.phase, activeSession?.startTime, activeSession?.duration, activeSession?.isFinished, handlePhaseComplete, remainingSeconds]);
 
   const handleFinishAndLeave = useCallback(() => {
     console.log('[FocusActive] handleFinishAndLeave — session complete, cleaning up');
@@ -123,7 +140,8 @@ export default function ActiveFocusScreen() {
     } else {
       router.replace('/(tabs)/focus');
     }
-  }, []);
+  }, [endSession, router]);
+
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

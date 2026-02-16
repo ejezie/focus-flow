@@ -46,12 +46,23 @@ export default function HomeScreen() {
     const currentDay = getCurrentDayIndex();
     const currentHour = getCurrentHourFraction();
 
+    // 1. Check for session in progress
+    const inProgress = blocks.find(b => 
+      b.relatedGoalId && 
+      b.dayIndex === currentDay && 
+      b.startHour <= currentHour && 
+      (b.startHour + b.duration) > currentHour
+    );
+    if (inProgress) return inProgress;
+
+    // 2. Check for upcoming today
     const upcomingToday = blocks
       .filter(b => b.relatedGoalId && b.dayIndex === currentDay && b.startHour > currentHour)
       .sort((a, b) => a.startHour - b.startHour);
 
     if (upcomingToday.length > 0) return upcomingToday[0];
 
+    // 3. Check for tomorrow
     const nextDay = ((currentDay + 1) % 7) as any;
     const tomorrow = blocks
       .filter(b => b.relatedGoalId && b.dayIndex === nextDay)
@@ -102,18 +113,30 @@ export default function HomeScreen() {
             <Text style={[styles.greeting, { color: theme.icon }]}>{greeting}</Text>
             <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>FocusFlow</Text>
         </View>
-        <TouchableOpacity 
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push('/settings');
-          }} 
-          style={[styles.settingsBtn, { backgroundColor: theme.card }]}
-          accessibilityRole="button"
-          accessibilityLabel="Settings"
-          accessibilityHint="Open app settings"
-        >
-            <IconSymbol name="gearshape.fill" size={22} color={theme.icon} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity 
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push('/debug/test' as any);
+              }} 
+              style={[styles.settingsBtn, { backgroundColor: theme.card }]}
+            >
+                <IconSymbol name="hammer.fill" size={20} color={theme.icon} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push('/settings');
+              }} 
+              style={[styles.settingsBtn, { backgroundColor: theme.card }]}
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              accessibilityHint="Open app settings"
+            >
+                <IconSymbol name="gearshape.fill" size={22} color={theme.icon} />
+            </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView 
@@ -181,7 +204,11 @@ export default function HomeScreen() {
 
         {/* Next Session Section */}
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Coming Up Next</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>
+            {nextSession && nextSession.dayIndex === getCurrentDayIndex() && nextSession.startHour <= getCurrentHourFraction() 
+              ? 'Currently In Progress' 
+              : 'Coming Up Next'}
+          </Text>
         </View>
 
         {nextSession ? (
@@ -203,7 +230,9 @@ export default function HomeScreen() {
                 </View>
               </View>
               <Text style={[styles.sessionTime, { color: theme.icon }]}>
-                {nextSession.dayIndex === getCurrentDayIndex() ? 'Today' : 'Tomorrow'} • {Math.round(nextSession.duration * 60)} min session
+                {nextSession.dayIndex === getCurrentDayIndex() 
+                  ? (nextSession.startHour <= getCurrentHourFraction() ? 'Active now' : 'Today') 
+                  : 'Tomorrow'} • {Math.round(nextSession.duration * 60)} min session
               </Text>
               <TouchableOpacity 
                 style={[styles.startButton, { backgroundColor: theme.primary }]}
@@ -211,7 +240,9 @@ export default function HomeScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Start session now"
               >
-                <Text style={styles.startButtonText}>Start Now</Text>
+                <Text style={styles.startButtonText}>
+                    {nextSession.startHour <= getCurrentHourFraction() && nextSession.dayIndex === getCurrentDayIndex() ? 'Focus Now' : 'Start Now'}
+                </Text>
                 <IconSymbol name="play.fill" size={14} color="#FFF" />
               </TouchableOpacity>
             </View>

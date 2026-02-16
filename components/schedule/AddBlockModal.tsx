@@ -5,6 +5,7 @@ import { Colors } from '@/constants/theme';
 import { DAYS_OF_WEEK, PRESET_COLORS, ScheduleBlock, START_HOUR, END_HOUR, DayIndex } from '@/constants/types/schedule';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { useGoalStore } from '@/store/goalStore';
 
 interface AddBlockModalProps {
   visible: boolean;
@@ -25,6 +26,9 @@ export function AddBlockModal({ visible, onClose, onSave, editingBlock, onDelete
   const [startTime, setStartTime] = useState(new Date()); // defaults to now, needs clamping
   const [endTime, setEndTime] = useState(new Date());
   const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[0]);
+  const [selectedGoalId, setSelectedGoalId] = useState<string | undefined>(undefined);
+  
+  const goals = useGoalStore(s => s.goals);
   
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
@@ -44,6 +48,7 @@ export function AddBlockModal({ visible, onClose, onSave, editingBlock, onDelete
         setEndTime(end);
         
         setSelectedColor(editingBlock.color);
+        setSelectedGoalId(editingBlock.relatedGoalId);
       } else {
         // Reset defaults
         setLabel('');
@@ -60,6 +65,7 @@ export function AddBlockModal({ visible, onClose, onSave, editingBlock, onDelete
         setEndTime(new Date(now));
         
         setSelectedColor(PRESET_COLORS[0]);
+        setSelectedGoalId(undefined);
       }
     }
   }, [visible, editingBlock, initialDayIndex, initialStartHour]);
@@ -99,6 +105,7 @@ export function AddBlockModal({ visible, onClose, onSave, editingBlock, onDelete
       duration,
       label,
       color: selectedColor,
+      relatedGoalId: selectedGoalId,
     }, editingBlock ? [] : selectedDays); // Pass all days if creating new
   };
 
@@ -132,6 +139,47 @@ export function AddBlockModal({ visible, onClose, onSave, editingBlock, onDelete
               value={label}
               onChangeText={setLabel}
             />
+
+            {/* Goal Selector */}
+            <Text style={[styles.label, { color: theme.text }]}>Map to Goal (Focus Session)</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.goalRow}>
+              <TouchableOpacity
+                style={[
+                    styles.goalChip,
+                    { backgroundColor: theme.background, borderColor: theme.icon, borderWidth: 1 },
+                    selectedGoalId === undefined && { borderColor: theme.primary, borderWidth: 2 }
+                ]}
+                onPress={() => {
+                    setSelectedGoalId(undefined);
+                }}
+              >
+                <Text style={{ color: theme.text, fontSize: 12 }}>None (Busy Block)</Text>
+              </TouchableOpacity>
+              
+              {goals.map((goal) => (
+                <TouchableOpacity
+                  key={goal.id}
+                  style={[
+                    styles.goalChip,
+                    { backgroundColor: theme.background, borderColor: goal.color, borderWidth: 1 },
+                    selectedGoalId === goal.id && { backgroundColor: goal.color }
+                  ]}
+                  onPress={() => {
+                    setSelectedGoalId(goal.id);
+                    setLabel(goal.title);
+                    setSelectedColor(goal.color);
+                  }}
+                >
+                  <Text style={{ 
+                      color: selectedGoalId === goal.id ? '#FFF' : theme.text,
+                      fontSize: 12,
+                      fontWeight: selectedGoalId === goal.id ? 'bold' : 'normal'
+                  }}>
+                    {goal.title}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
             {/* Day Selector */}
             <Text style={[styles.label, { color: theme.text }]}>
@@ -344,5 +392,17 @@ const styles = StyleSheet.create({
   deleteButtonText: {
       color: '#EF4444',
       fontWeight: '600',
+  },
+  goalRow: {
+      flexDirection: 'row',
+      paddingVertical: 8,
+  },
+  goalChip: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      marginRight: 10,
+      justifyContent: 'center',
+      alignItems: 'center',
   }
 });
