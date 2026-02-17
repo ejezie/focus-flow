@@ -43,7 +43,15 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "The app needs to access your calendar to sync your schedule.",
+          "remindersPermission": "The app needs to access your reminders to sync your tasks."
+        }
+      ],
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,

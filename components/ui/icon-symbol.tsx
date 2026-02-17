@@ -1,10 +1,10 @@
 // Fallback for using MaterialIcons on Android and web.
 
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { ComponentProps } from 'react';
-import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { ComponentProps } from "react";
+import { OpaqueColorValue, type StyleProp, type TextStyle } from "react-native";
 
-type IconMapping = Record<string, ComponentProps<typeof MaterialIcons>['name']>;
+type IconMapping = Record<string, ComponentProps<typeof MaterialIcons>["name"]>;
 type IconSymbolName = string;
 
 /**
@@ -13,37 +13,39 @@ type IconSymbolName = string;
  * - see SF Symbols in the [SF Symbols](https://developer.apple.com/sf-symbols/) app.
  */
 const MAPPING = {
-  'house.fill': 'home',
-  'paperplane.fill': 'send',
-  'chevron.left.forwardslash.chevron.right': 'code',
-  'chevron.right': 'chevron-right',
-  'chevron.left': 'chevron-left',
-  'calendar': 'calendar-today',
-  'flag.fill': 'flag',
-  'clock.fill': 'schedule',
-  'chart.bar.fill': 'bar-chart',
-  'plus': 'add',
-  'plus.circle.fill': 'add-circle',
-  'sparkles': 'auto-fix-high',
-  'timer': 'timer',
-  'bolt.fill': 'bolt',
-  'trophy.fill': 'emoji-events',
-  'flame.fill': 'whatshot',
-  'star.fill': 'star',
-  'bell.fill': 'notifications',
-  'gearshape.fill': 'settings',
-  'square.and.arrow.up': 'share',
-  'arrow.counterclockwise': 'refresh',
-  'trash.fill': 'delete',
-  'lock.fill': 'lock',
-  'envelope.fill': 'email',
-  'checkmark.circle.fill': 'check-circle',
-  'xmark': 'close',
-  'play.fill': 'play-arrow',
-  'pause.fill': 'pause',
-  'forward.fill': 'skip-next',
-  'sparkles.tv.fill': 'live-tv',
-  'calendar.badge.clock': 'event-note',
+  "house.fill": "home",
+  "paperplane.fill": "send",
+  "chevron.left.forwardslash.chevron.right": "code",
+  "chevron.right": "chevron-right",
+  "chevron.left": "chevron-left",
+  calendar: "calendar-today",
+  "flag.fill": "flag",
+  "clock.fill": "schedule",
+  "chart.bar.fill": "bar-chart",
+  plus: "add",
+  "plus.circle.fill": "add-circle",
+  sparkles: "auto-fix-high",
+  timer: "timer",
+  "bolt.fill": "bolt",
+  "trophy.fill": "emoji-events",
+  "flame.fill": "whatshot",
+  "star.fill": "star",
+  "bell.fill": "notifications",
+  "gearshape.fill": "settings",
+  "square.and.arrow.up": "share",
+  "arrow.counterclockwise": "refresh",
+  "trash.fill": "delete",
+  "lock.fill": "lock",
+  "envelope.fill": "email",
+  "checkmark.circle.fill": "check-circle",
+  xmark: "close",
+  "play.fill": "play-arrow",
+  "pause.fill": "pause",
+  "forward.fill": "skip-next",
+  "sparkles.tv.fill": "live-tv",
+  "calendar.badge.clock": "event-note",
+  "calendar.badge.plus": "event",
+  target: "track-changes",
 } as IconMapping;
 
 /**
@@ -63,5 +65,12 @@ export function IconSymbol({
   style?: StyleProp<TextStyle>;
   weight?: any;
 }) {
-  return <MaterialIcons color={color} size={size} name={MAPPING[name]} style={style} />;
+  return (
+    <MaterialIcons
+      color={color}
+      size={size}
+      name={MAPPING[name]}
+      style={style}
+    />
+  );
 }

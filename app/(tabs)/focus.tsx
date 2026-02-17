@@ -5,6 +5,7 @@ import { NotificationSettingsCard } from "@/components/focus/NotificationSetting
 import { PomodoroSettingsCard } from "@/components/focus/PomodoroSettingsCard";
 import { TimeSettingsCard } from "@/components/focus/TimeSettingsCard";
 import { UpcomingSessionCard } from "@/components/focus/UpcomingSessionCard";
+import { CalendarSettings } from "@/components/settings/CalendarSettings";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
@@ -20,7 +21,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
     Alert,
     FlatList,
@@ -44,12 +45,20 @@ export default function FocusScreen() {
   const activeSession = useFocusStore((state) => state.activeSession);
   const blocks = useScheduleStore((state) => state.blocks);
   const deleteBusyBlock = useScheduleStore((state) => state.deleteBusyBlock);
+  const refreshCalendarEvents = useScheduleStore(
+    (state) => state.refreshCalendarEvents,
+  );
   const goals = useGoalStore((state) => state.goals);
 
   const [viewMode, setViewMode] = useState<"dashboard" | "calendar">(
     "dashboard",
   );
   const [refreshing, setRefreshing] = useState(false);
+  const [calendarSettingsVisible, setCalendarSettingsVisible] = useState(false);
+
+  useEffect(() => {
+    refreshCalendarEvents();
+  }, []);
 
   const { settings } = useSettingsStore();
   const { goalStats } = useStatsStore();
@@ -232,6 +241,25 @@ export default function FocusScreen() {
           </Text>
         </View>
         <View style={styles.viewToggle}>
+          <TouchableOpacity
+            onPress={() => setCalendarSettingsVisible(true)}
+            style={styles.toggleBtn}
+          >
+            <IconSymbol
+              name="calendar.badge.plus"
+              size={20}
+              color={theme.icon}
+            />
+          </TouchableOpacity>
+          <View
+            style={{
+              width: 1,
+              height: 20,
+              backgroundColor: theme.icon,
+              opacity: 0.2,
+              marginHorizontal: 4,
+            }}
+          />
           <TouchableOpacity
             onPress={() => setViewMode("dashboard")}
             style={[
@@ -432,6 +460,11 @@ export default function FocusScreen() {
           </View>
         </View>
       </Modal>
+
+      <CalendarSettings
+        visible={calendarSettingsVisible}
+        onClose={() => setCalendarSettingsVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -461,6 +494,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.1)",
     borderRadius: 20,
     padding: 2,
+    alignItems: "center",
   },
   toggleBtn: {
     paddingHorizontal: 12,

@@ -46,8 +46,30 @@ export function WeekView({ blocks, onBlockPress, onGridPress }: WeekViewProps) {
       height: block.duration * HOUR_HEIGHT,
       left: 45 + block.dayIndex * dayWidth,
       width: dayWidth - 4, // 2px gap on each side
-      backgroundColor: block.color,
+      backgroundColor: block.source === "calendar" ? theme.card : block.color,
+      borderWidth: block.source === "calendar" ? 1 : 0,
+      borderColor: block.source === "calendar" ? theme.icon : "transparent",
+      opacity: block.source === "calendar" ? 0.8 : 1,
     };
+  };
+
+  // Simple overlap detection for visual feedback
+  const getConflictStyle = (block: ScheduleBlock) => {
+    const isOverlapping = blocks.some(
+      (b) =>
+        b.id !== block.id &&
+        b.dayIndex === block.dayIndex &&
+        block.startHour < b.startHour + b.duration &&
+        block.startHour + block.duration > b.startHour,
+    );
+
+    if (isOverlapping) {
+      return {
+        borderWidth: 2,
+        borderColor: "#EF4444", // Red for conflict
+      };
+    }
+    return {};
   };
 
   return (
@@ -135,11 +157,21 @@ export function WeekView({ blocks, onBlockPress, onGridPress }: WeekViewProps) {
             {blocks.map((block) => (
               <TouchableOpacity
                 key={block.id}
-                style={[styles.block, getBlockStyle(block)]}
+                style={[
+                  styles.block,
+                  getBlockStyle(block),
+                  getConflictStyle(block),
+                ]}
                 onPress={() => onBlockPress(block)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.blockText} numberOfLines={1}>
+                <Text
+                  style={[
+                    styles.blockText,
+                    block.source === "calendar" && { color: theme.text },
+                  ]}
+                  numberOfLines={1}
+                >
                   {block.label}
                 </Text>
                 <Text style={styles.blockTime} numberOfLines={1}>
