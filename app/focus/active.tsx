@@ -6,10 +6,7 @@ import { useFocusStore } from "@/store/focusStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useStatsStore } from "@/store/statsStore";
 import {
-    cancelNagNotifications,
-    cancelPomodoroEndAlarm,
-    playSessionSound,
-    schedulePomodoroEndAlarm,
+    cancelPomodoroEndAlarm
 } from "@/utils/notifications/notificationService";
 import * as Haptics from "expo-haptics";
 import { useKeepAwake } from "expo-keep-awake";
@@ -36,46 +33,6 @@ export default function ActiveFocusScreen() {
   useKeepAwake();
 
   const [remainingSeconds, setRemainingSeconds] = useState(0);
-  const hasTriggeredCompletion = React.useRef(false);
-
-  // Reset completion trigger when phase changes
-  useEffect(() => {
-    hasTriggeredCompletion.current = false;
-  }, [activeSession?.phase]);
-
-  // Schedule background alarm for timer end (fires even when app is backgrounded)
-  useEffect(() => {
-    if (!activeSession || activeSession.isFinished || activeSession.isPaused) {
-      return;
-    }
-    const elapsed = (Date.now() - activeSession.startTime) / 1000;
-    const remaining = Math.max(0, activeSession.duration - elapsed);
-    if (remaining > 0) {
-      schedulePomodoroEndAlarm(
-        remaining,
-        activeSession.phase,
-        activeSession.goalName,
-        settings.notificationSound,
-        settings.notificationVibration,
-      );
-    }
-    return () => {
-      // Don't cancel here — we WANT the alarm to fire when backgrounded
-    };
-  }, [
-    activeSession?.phase,
-    activeSession?.startTime,
-    activeSession?.duration,
-    activeSession?.isPaused,
-    activeSession?.isFinished,
-  ]);
-
-  // Cancel nag notifications when pomodoro is active
-  useEffect(() => {
-    if (activeSession && !activeSession.isFinished) {
-      cancelNagNotifications();
-    }
-  }, [activeSession?.phase]);
 
   const handleMinimize = useCallback(() => {
     console.log(
@@ -133,48 +90,6 @@ export default function ActiveFocusScreen() {
     }
   }, [activeSession, getElapsedMinutes, recordSession, endSession, router]);
 
-  const handlePhaseComplete = useCallback(async () => {
-    console.log(
-      "[FocusActive] handlePhaseComplete called, phase:",
-      activeSession?.phase,
-    );
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await playSessionSound(settings.notificationSound);
-
-    if (activeSession?.phase === "work") {
-      console.log(
-        "[FocusActive] Phase complete — recording full pomodoro:",
-        activeSession.workDuration,
-        "min",
-      );
-      recordSession({
-        goalId: activeSession.goalId,
-        minutes: activeSession.workDuration,
-      });
-    }
-
-    Alert.alert(
-      "Phase Complete!",
-      activeSession?.phase === "work" ? "Time for a break!" : "Back to work!",
-      [
-        { text: "Continue", onPress: () => nextPhase() },
-        {
-          text: "End Session",
-          onPress: () => handleEndEarly(),
-          style: "destructive",
-        },
-      ],
-      { cancelable: false },
-    );
-  }, [
-    activeSession?.phase,
-    activeSession?.goalId,
-    activeSession?.workDuration,
-    nextPhase,
-    recordSession,
-    handleEndEarly,
-  ]);
-
   // Timer tick
   useEffect(() => {
     if (!activeSession || activeSession.isFinished) return;
@@ -187,11 +102,6 @@ export default function ActiveFocusScreen() {
       const elapsed = (Date.now() - activeSession.startTime) / 1000;
       const remaining = Math.max(0, activeSession.duration - elapsed);
       setRemainingSeconds(remaining);
-
-      if (remaining <= 0 && !hasTriggeredCompletion.current) {
-        hasTriggeredCompletion.current = true;
-        handlePhaseComplete();
-      }
     };
 
     updateTimer();
@@ -200,11 +110,9 @@ export default function ActiveFocusScreen() {
     return () => clearInterval(interval);
   }, [
     activeSession?.isPaused,
-    activeSession?.phase,
     activeSession?.startTime,
     activeSession?.duration,
     activeSession?.isFinished,
-    handlePhaseComplete,
   ]);
 
   const handleFinishAndLeave = useCallback(() => {

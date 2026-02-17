@@ -12,6 +12,7 @@ import "react-native-reanimated";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MiniPlayer } from "@/components/focus/MiniPlayer";
+import { PomodoroGlobalListener } from "@/components/focus/PomodoroGlobalListener";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import {
@@ -175,6 +176,7 @@ export default function RootLayout() {
             />
           </Stack>
           <MiniPlayer />
+          <PomodoroGlobalListener />
         </View>
         <StatusBar style="auto" />
       </ThemeProvider>

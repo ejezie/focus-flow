@@ -154,9 +154,9 @@ export function WeekView({ blocks, onBlockPress, onGridPress }: WeekViewProps) {
             ))}
 
             {/* Blocks */}
-            {blocks.map((block) => (
+            {blocks.map((block, index) => (
               <TouchableOpacity
-                key={block.id}
+                key={`${block.id}-${index}`}
                 style={[
                   styles.block,
                   getBlockStyle(block),

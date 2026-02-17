@@ -143,7 +143,7 @@ export const useScheduleStore = create<ScheduleState>()(
               const duration = endHour - startHour;
 
               return {
-                id: `cal-${event.id}`,
+                id: `cal-${event.id}-${eventStart.getTime()}`,
                 dayIndex: dayIndex as DayIndex,
                 startHour: Math.max(0, startHour),
                 duration: Math.max(0.1, duration), // Minimum duration
@@ -159,6 +159,12 @@ export const useScheduleStore = create<ScheduleState>()(
                 b.duration > 0 &&
                 b.startHour < END_HOUR &&
                 b.startHour + b.duration > START_HOUR,
+            )
+            // Deduplicate by ID — recurring events across the multi-week fetch
+            // range can map to the same dayIndex and produce identical IDs
+            .filter(
+              (block, index, self) =>
+                self.findIndex((b) => b.id === block.id) === index,
             );
 
           // Update store: replace old calendar blocks with new ones
