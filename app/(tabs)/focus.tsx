@@ -23,6 +23,8 @@ import { useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
     Alert,
+    FlatList,
+    Modal,
     RefreshControl,
     ScrollView,
     StatusBar,
@@ -51,6 +53,7 @@ export default function FocusScreen() {
 
   const { settings } = useSettingsStore();
   const { goalStats } = useStatsStore();
+  const [goalPickerVisible, setGoalPickerVisible] = useState(false);
 
   const onRefresh = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -161,10 +164,19 @@ export default function FocusScreen() {
 
   const handleQuickPomodoro = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (goals.length > 0) {
+      setGoalPickerVisible(true);
+    } else {
+      startQuickSession();
+    }
+  }, [goals.length]);
+
+  const startQuickSession = (goalId?: string, goalName?: string) => {
+    setGoalPickerVisible(false);
 
     const quickParams = {
-      goalId: "unlinked",
-      goalName: "Quick Focus",
+      goalId: goalId || "unlinked",
+      goalName: goalName || "Quick Focus",
       workDuration: settings.pomodoroWorkDuration,
       breakDuration: settings.pomodoroBreakDuration,
       longBreakDuration: settings.pomodoroLongBreakDuration,
@@ -198,7 +210,7 @@ export default function FocusScreen() {
 
     startSession(quickParams);
     router.push("/focus/active");
-  }, [settings, activeSession]);
+  };
 
   return (
     <SafeAreaView
@@ -350,6 +362,76 @@ export default function FocusScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Goal Picker Modal */}
+      <Modal
+        visible={goalPickerVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setGoalPickerVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
+                Assign Goal
+              </Text>
+              <TouchableOpacity onPress={() => setGoalPickerVisible(false)}>
+                <IconSymbol name="xmark" size={24} color={theme.icon} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.modalSubtitle, { color: theme.icon }]}>
+              Choose a goal for this quick session or keep it unlinked.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.goalItem, { backgroundColor: theme.background }]}
+              onPress={() => startQuickSession()}
+            >
+              <View
+                style={[
+                  styles.goalIcon,
+                  { backgroundColor: theme.icon + "22" },
+                ]}
+              >
+                <IconSymbol name="timer" size={20} color={theme.icon} />
+              </View>
+              <Text style={[styles.goalItemText, { color: theme.text }]}>
+                Unlinked / Quick Focus
+              </Text>
+            </TouchableOpacity>
+
+            <FlatList
+              data={goals}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.goalItem,
+                    { backgroundColor: theme.background },
+                  ]}
+                  onPress={() => startQuickSession(item.id, item.title)}
+                >
+                  <View
+                    style={[
+                      styles.goalIcon,
+                      { backgroundColor: item.color + "22" },
+                    ]}
+                  >
+                    <IconSymbol name="target" size={20} color={item.color} />
+                  </View>
+                  <Text style={[styles.goalItemText, { color: theme.text }]}>
+                    {item.title}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              style={styles.goalList}
+              showsVerticalScrollIndicator={false}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -433,5 +515,52 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.75)",
     fontSize: 12,
     marginTop: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    maxHeight: "80%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    marginBottom: 20,
+  },
+  goalList: {
+    marginTop: 8,
+  },
+  goalItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 10,
+  },
+  goalIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  goalItemText: {
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

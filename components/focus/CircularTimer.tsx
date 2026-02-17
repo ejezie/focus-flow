@@ -1,43 +1,48 @@
-import React from 'react';
-import { StyleSheet, View, Text } from 'react-native';
-import Svg, { Circle, G } from 'react-native-svg';
-import Animated, { 
-  useAnimatedProps, 
-  withTiming, 
-  useDerivedValue,
-} from 'react-native-reanimated';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors } from "@/constants/theme";
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
+import Animated, {
+    useAnimatedProps,
+    withTiming
+} from "react-native-reanimated";
+import Svg, { Circle, G } from "react-native-svg";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 interface CircularTimerProps {
   progress: number; // 0 to 1
   remainingTime: string; // "MM:SS"
-  phase: 'work' | 'break' | 'long-break';
+  phase: "work" | "break" | "long-break";
+  label?: string; // Goal name or specific label
   size?: number;
   strokeWidth?: number;
 }
 
-export const CircularTimer: React.FC<CircularTimerProps> = ({ 
-  progress, 
-  remainingTime, 
+export const CircularTimer: React.FC<CircularTimerProps> = ({
+  progress,
+  remainingTime,
   phase,
+  label,
   size = 280,
-  strokeWidth = 15
+  strokeWidth = 15,
 }) => {
   const colorScheme = useColorScheme();
-  const theme = Colors[colorScheme ?? 'light'];
-  
+  const theme = Colors[colorScheme ?? "light"];
+
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
 
   const getPhaseColor = () => {
     switch (phase) {
-      case 'work': return theme.primary;
-      case 'break': return '#4ADE80'; // Green
-      case 'long-break': return '#2DD4BF'; // Teal
-      default: return theme.primary;
+      case "work":
+        return theme.primary;
+      case "break":
+        return "#4ADE80"; // Green
+      case "long-break":
+        return "#2DD4BF"; // Teal
+      default:
+        return theme.primary;
     }
   };
 
@@ -78,9 +83,16 @@ export const CircularTimer: React.FC<CircularTimerProps> = ({
         </G>
       </Svg>
       <View style={styles.textContainer}>
-        <Text style={[styles.timerText, { color: theme.text }]}>{remainingTime}</Text>
-        <Text style={[styles.phaseText, { color: phaseColor }]}>
-          {phase.toUpperCase().replace('-', ' ')}
+        <Text style={[styles.timerText, { color: theme.text }]}>
+          {remainingTime}
+        </Text>
+        <Text
+          style={[styles.phaseText, { color: phaseColor }]}
+          numberOfLines={1}
+        >
+          {phase === "work" && label
+            ? label.toUpperCase()
+            : phase.toUpperCase().replace("-", " ")}
         </Text>
       </View>
     </View>
@@ -89,28 +101,28 @@ export const CircularTimer: React.FC<CircularTimerProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
     shadowRadius: 20,
     elevation: 10,
   },
   textContainer: {
-    position: 'absolute',
-    justifyContent: 'center',
-    alignItems: 'center',
+    position: "absolute",
+    justifyContent: "center",
+    alignItems: "center",
   },
   timerText: {
     fontSize: 64,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
     letterSpacing: -1,
   },
   phaseText: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 4,
     marginTop: -2,
     opacity: 0.8,

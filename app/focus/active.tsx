@@ -342,6 +342,7 @@ export default function ActiveFocusScreen() {
           progress={progress}
           remainingTime={formatTime(remainingSeconds)}
           phase={activeSession.phase}
+          label={activeSession.goalName}
         />
       </View>
 
