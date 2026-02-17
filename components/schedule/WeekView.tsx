@@ -1,22 +1,21 @@
-import React from "react";
+import { Colors } from "@/constants/theme";
 import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  Dimensions,
-  TouchableOpacity,
-  LayoutChangeEvent,
-} from "react-native";
-import {
-  ScheduleBlock,
   DAYS_OF_WEEK,
-  START_HOUR,
   END_HOUR,
   HOUR_HEIGHT,
+  ScheduleBlock,
+  START_HOUR,
 } from "@/constants/types/schedule";
-import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import React from "react";
+import {
+  LayoutChangeEvent,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 interface WeekViewProps {
@@ -52,7 +51,7 @@ export function WeekView({ blocks, onBlockPress, onGridPress }: WeekViewProps) {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1 }} edges={["bottom", "left", "right"]}>
       <View style={styles.container}>
         {/* Header (Days) */}
         <View
@@ -173,12 +172,20 @@ export function WeekView({ blocks, onBlockPress, onGridPress }: WeekViewProps) {
                       style={{
                         height: HOUR_HEIGHT,
                         width: "100%",
-                        justifyContent: 'center',
-                        alignItems: 'center',
+                        justifyContent: "center",
+                        alignItems: "center",
                       }}
                       onPress={() => onGridPress(dIndex, h)}
                     >
-                        <Text style={{ color: theme.icon, opacity: 0.1, fontSize: 10 }}>{h}</Text>
+                      <Text
+                        style={{
+                          color: theme.icon,
+                          opacity: 0.7,
+                          fontSize: 10,
+                        }}
+                      >
+                        {h}
+                      </Text>
                     </TouchableOpacity>
                   ))}
                 </View>

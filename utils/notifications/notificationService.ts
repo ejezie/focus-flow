@@ -1,14 +1,14 @@
-import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
-import { createAudioPlayer } from 'expo-audio';
-import { ScheduleBlock } from '@/constants/types/schedule';
+import { ScheduleBlock } from "@/constants/types/schedule";
+import { createAudioPlayer } from "expo-audio";
+import * as Notifications from "expo-notifications";
+import { Platform } from "react-native";
 
 // Configure notification categories for actions
 export async function setupNotificationCategories() {
-  await Notifications.setNotificationCategoryAsync('SESSION_REPRODUCTION', [
+  await Notifications.setNotificationCategoryAsync("SESSION_REPRODUCTION", [
     {
-      identifier: 'START_NOW',
-      buttonTitle: 'Start Now',
+      identifier: "START_NOW",
+      buttonTitle: "Start Now",
       options: { opensAppToForeground: true },
     },
   ]);
@@ -18,27 +18,27 @@ export async function setupNotificationCategories() {
 export async function requestNotificationPermissions() {
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
-  
-  if (existingStatus !== 'granted') {
+
+  if (existingStatus !== "granted") {
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
   }
-  
-  if (finalStatus !== 'granted') {
+
+  if (finalStatus !== "granted") {
     return false;
   }
-  
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'Default',
+
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "Default",
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       enableVibrate: true,
-      lightColor: '#6366F1',
+      lightColor: "#6366F1",
       showBadge: true,
     });
   }
-  
+
   return true;
 }
 
@@ -49,25 +49,25 @@ function mapToExpoWeekday(dayIndex: number) {
 
 // Schedule notifications for a block
 export async function scheduleSessionNotifications(
-  session: ScheduleBlock, 
+  session: ScheduleBlock,
   reminderMinutes: number,
   notificationSound: boolean,
-  notificationVibration: boolean
+  notificationVibration: boolean,
 ) {
   if (!session.relatedGoalId) return [];
 
   const ids: string[] = [];
   const now = new Date();
-  
+
   // Calculate relative occurrence
   const hour = Math.floor(session.startHour);
   const minute = Math.round((session.startHour % 1) * 60);
-  
+
   // Find the next occurrence of this session
   let sessionDate = new Date();
   const currentDay = now.getDay() === 0 ? 6 : now.getDay() - 1; // 0=Mon
   let daysUntil = (session.dayIndex - currentDay + 7) % 7;
-  
+
   sessionDate.setDate(now.getDate() + daysUntil);
   sessionDate.setHours(hour, minute, 0, 0);
 
@@ -77,42 +77,47 @@ export async function scheduleSessionNotifications(
   }
 
   const scheduleLocal = async (
-    title: string, 
-    body: string, 
-    date: Date, 
-    type: string, 
-    sound: boolean = true, 
-    vibrate: boolean = true
+    title: string,
+    body: string,
+    date: Date,
+    type: string,
+    sound: boolean = true,
+    vibrate: boolean = true,
   ) => {
     const secondsFromNow = Math.round((date.getTime() - now.getTime()) / 1000);
-    
-    // Safety check: if time already passed, don't schedule
-    if (secondsFromNow <= 0 && type !== 'START') return null;
 
-    // For Android/Interval-based, we use seconds from now. 
+    // Safety check: if time already passed, don't schedule
+    if (secondsFromNow <= 0 && type !== "START") return null;
+
+    // For Android/Interval-based, we use seconds from now.
     // This is more reliable than DATE trigger for some Expo versions.
-    const trigger: any = Platform.OS === 'android' 
-      ? {
-          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: Math.max(1, secondsFromNow),
-        }
-      : {
-          type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
-          weekday: date.getDay() + 1, // Sun=0 in JS, Sun=1 in Expo
-          hour: date.getHours(),
-          minute: date.getMinutes(),  
-          repeats: true,
-        };
+    const trigger: any =
+      Platform.OS === "android"
+        ? {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: Math.max(1, secondsFromNow),
+          }
+        : {
+            type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+            weekday: date.getDay() + 1, // Sun=0 in JS, Sun=1 in Expo
+            hour: date.getHours(),
+            minute: date.getMinutes(),
+            repeats: true,
+          };
 
     try {
       return await Notifications.scheduleNotificationAsync({
         content: {
           title,
           body,
-          categoryIdentifier: 'SESSION_REPRODUCTION',
+          categoryIdentifier: "SESSION_REPRODUCTION",
           data: { sessionId: session.id, type },
           sound: notificationSound ? sound : false,
-          vibrate: notificationVibration ? (vibrate ? [0, 250, 250, 250] : undefined) : undefined,
+          vibrate: notificationVibration
+            ? vibrate
+              ? [0, 250, 250, 250]
+              : undefined
+            : undefined,
         },
         trigger,
       });
@@ -123,17 +128,19 @@ export async function scheduleSessionNotifications(
   };
 
   // 1. Pre-session reminder
-  const reminderDate = new Date(sessionDate.getTime() - reminderMinutes * 60000);
+  const reminderDate = new Date(
+    sessionDate.getTime() - reminderMinutes * 60000,
+  );
   if (reminderDate.getTime() > now.getTime()) {
-      const rid = await scheduleLocal(
-        `Upcoming: ${session.label}`,
-        `Starting in ${reminderMinutes} minutes. Ready to focus?`,
-        reminderDate,
-        'REMINDER',
-        true,
-        true
-      );
-      if (rid) ids.push(rid);
+    const rid = await scheduleLocal(
+      `Upcoming: ${session.label}`,
+      `Starting in ${reminderMinutes} minutes. Ready to focus?`,
+      reminderDate,
+      "REMINDER",
+      true,
+      true,
+    );
+    if (rid) ids.push(rid);
   }
 
   // 2. Session start notification
@@ -141,9 +148,9 @@ export async function scheduleSessionNotifications(
     `Time to focus on ${session.label}`,
     `Duration: ${Math.round(session.duration * 60)} minutes. Let's go!`,
     sessionDate,
-    'START',
+    "START",
     true,
-    true
+    true,
   );
   if (sid) ids.push(sid);
 
@@ -152,17 +159,37 @@ export async function scheduleSessionNotifications(
   const nagLimitMs = sessionDurationMs * 0.3;
   const nagIntervalMs = 5 * 60000; // Nag every 5 minutes
 
-  for (let offsetMs = nagIntervalMs; offsetMs <= nagLimitMs; offsetMs += nagIntervalMs) {
-      const nagDate = new Date(sessionDate.getTime() + offsetMs);
-      const nagId = await scheduleLocal(
-        `Still haven't started?`,
-        `Your session "${session.label}" is currently active. Don't lose your focus!`,
-        nagDate,
-        'NAG',
-        true,
-        true
-      );
+  for (
+    let offsetMs = nagIntervalMs;
+    offsetMs <= nagLimitMs;
+    offsetMs += nagIntervalMs
+  ) {
+    const nagDate = new Date(sessionDate.getTime() + offsetMs);
+    const nagSecondsFromNow = Math.round(
+      (nagDate.getTime() - now.getTime()) / 1000,
+    );
+    if (nagSecondsFromNow <= 0) continue;
+
+    try {
+      const nagId = await Notifications.scheduleNotificationAsync({
+        identifier: `nag-${session.id}-${offsetMs}`,
+        content: {
+          title: `Still haven't started?`,
+          body: `Your session "${session.label}" is currently active. Don't lose your focus!`,
+          categoryIdentifier: "SESSION_REPRODUCTION",
+          data: { sessionId: session.id, type: "NAG" },
+          sound: notificationSound,
+          vibrate: notificationVibration ? [0, 250, 250, 250] : undefined,
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: Math.max(1, nagSecondsFromNow),
+        },
+      });
       if (nagId) ids.push(nagId);
+    } catch (e) {
+      console.warn(`[NotificationService] Failed to schedule NAG:`, e);
+    }
   }
 
   // 4. Session end notification
@@ -175,9 +202,9 @@ export async function scheduleSessionNotifications(
     `Session Complete!`,
     `Great job focusing on ${session.label}. Take a break!`,
     endDate,
-    'END',
+    "END",
     true,
-    true
+    true,
   );
   if (eid) ids.push(eid);
 
@@ -191,22 +218,27 @@ export async function cancelSessionNotifications(blockIds: string[]) {
 
 // Re-schedule all notifications for all focus sessions
 export async function refreshAllNotifications(
-    blocks: ScheduleBlock[], 
-    reminderMinutes: number,
-    notificationsEnabled: boolean,
-    notificationSound: boolean,
-    notificationVibration: boolean
+  blocks: ScheduleBlock[],
+  reminderMinutes: number,
+  notificationsEnabled: boolean,
+  notificationSound: boolean,
+  notificationVibration: boolean,
 ) {
   if (!notificationsEnabled) {
-      await Notifications.cancelAllScheduledNotificationsAsync();
-      return;
+    await Notifications.cancelAllScheduledNotificationsAsync();
+    return;
   }
 
   await Notifications.cancelAllScheduledNotificationsAsync();
-  
-  const focusSessions = blocks.filter(b => b.relatedGoalId !== undefined);
+
+  const focusSessions = blocks.filter((b) => b.relatedGoalId !== undefined);
   for (const session of focusSessions) {
-    await scheduleSessionNotifications(session, reminderMinutes, notificationSound, notificationVibration);
+    await scheduleSessionNotifications(
+      session,
+      reminderMinutes,
+      notificationSound,
+      notificationVibration,
+    );
   }
 }
 
@@ -215,40 +247,56 @@ export async function playSessionSound(notificationSound: boolean) {
   if (!notificationSound) return;
 
   try {
-    const player = createAudioPlayer(require('@/assets/sounds/complete.mp3'));
-    
+    const player = createAudioPlayer(require("@/assets/sounds/complete.mp3"));
+
     // Play immediately
     player.play();
 
     // Release after playing
-    const subscription = player.addListener('playbackStatusUpdate', (status: any) => {
-      if (status.didJustFinish) {
-        player.release();
-        subscription.remove();
-      }
-    });
+    const subscription = player.addListener(
+      "playbackStatusUpdate",
+      (status: any) => {
+        if (status.didJustFinish) {
+          player.release();
+          subscription.remove();
+        }
+      },
+    );
   } catch (error) {
-    console.warn('[NotificationService] Error playing sound:', error);
+    console.warn("[NotificationService] Error playing sound:", error);
+  }
+}
+
+// Cancel only nag notifications ("Still haven't started?" reminders)
+export async function cancelNagNotifications() {
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  for (const notif of scheduled) {
+    if (notif.identifier.startsWith("nag-")) {
+      await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+    }
   }
 }
 
 // Schedule a notification for a Pomodoro phase change
 export async function schedulePhaseNotification(
-  phase: string, 
-  seconds: number, 
+  phase: string,
+  seconds: number,
   goalName: string,
   notificationSound: boolean,
-  notificationVibration: boolean
+  notificationVibration: boolean,
 ) {
-  // Cancel previous phase notifications first
-  await Notifications.cancelAllScheduledNotificationsAsync();
-  
+  // Cancel previous pomodoro-related notifications (phase + nags)
+  await cancelPomodoroEndAlarm();
+  await cancelNagNotifications();
+
   const endId = await Notifications.scheduleNotificationAsync({
+    identifier: "pomodoro-phase-end",
     content: {
-      title: phase === 'work' ? 'Time for a break!' : 'Back to work!',
-      body: phase === 'work' 
-        ? `You finished a work block for ${goalName}.` 
-        : `Ready for your next focus block?`,
+      title: phase === "work" ? "Time for a break!" : "Back to work!",
+      body:
+        phase === "work"
+          ? `You finished a work block for ${goalName}.`
+          : `Ready for your next focus block?`,
       sound: notificationSound,
       vibrate: notificationVibration ? [0, 500, 200, 500] : undefined,
     },
@@ -257,10 +305,50 @@ export async function schedulePhaseNotification(
       seconds: Math.max(1, Math.floor(seconds)),
     },
   });
-  
+
   return endId;
 }
 
+// Schedule a high-priority alarm for when the pomodoro timer ends (fires even when app is backgrounded)
+export async function schedulePomodoroEndAlarm(
+  seconds: number,
+  phase: string,
+  goalName: string,
+  notificationSound: boolean,
+  notificationVibration: boolean,
+) {
+  // Cancel any existing alarm first
+  await cancelPomodoroEndAlarm();
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: "pomodoro-end-alarm",
+    content: {
+      title: phase === "work" ? "⏰ Pomodoro Complete!" : "⏰ Break Over!",
+      body:
+        phase === "work"
+          ? `Great focus on ${goalName}! Time for a break.`
+          : `Break's over — ready for another round of ${goalName}?`,
+      sound: notificationSound,
+      vibrate: notificationVibration ? [0, 500, 200, 500] : undefined,
+      priority: "max" as any,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: Math.max(1, Math.floor(seconds)),
+    },
+  });
+}
+
+export async function cancelPomodoroEndAlarm() {
+  try {
+    await Notifications.cancelScheduledNotificationAsync("pomodoro-end-alarm");
+    await Notifications.cancelScheduledNotificationAsync("pomodoro-phase-end");
+  } catch (e) {
+    // May not exist, that's fine
+  }
+}
+
 export async function cancelPhaseNotifications() {
-  await Notifications.cancelAllScheduledNotificationsAsync();
+  await cancelPomodoroEndAlarm();
+  await cancelNagNotifications();
 }

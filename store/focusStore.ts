@@ -1,8 +1,8 @@
-import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 
-export type FocusPhase = 'work' | 'break' | 'long-break';
+export type FocusPhase = "work" | "break" | "long-break";
 
 interface ActiveSession {
   goalId: string;
@@ -23,17 +23,21 @@ interface ActiveSession {
   sessionsBeforeLongBreak: number;
 }
 
+type StartSessionParams = {
+  goalId: string;
+  goalName: string;
+  workDuration: number;
+  breakDuration: number;
+  longBreakDuration: number;
+  sessionsBeforeLongBreak: number;
+  totalPomodoros: number;
+};
+
 interface FocusState {
   activeSession: ActiveSession | null;
-  startSession: (params: { 
-    goalId: string; 
-    goalName: string; 
-    workDuration: number; 
-    breakDuration: number;
-    longBreakDuration: number;
-    sessionsBeforeLongBreak: number;
-    totalPomodoros: number;
-  }) => void;
+  hasActiveSession: () => boolean;
+  startSession: (params: StartSessionParams) => boolean;
+  discardAndStartSession: (params: StartSessionParams) => void;
   pauseSession: () => void;
   resumeSession: () => void;
   nextPhase: () => void;
@@ -47,16 +51,38 @@ export const useFocusStore = create<FocusState>()(
     (set, get) => ({
       activeSession: null,
 
-      startSession: ({ 
-        goalId, goalName, workDuration, breakDuration, 
-        longBreakDuration, sessionsBeforeLongBreak, totalPomodoros 
+      hasActiveSession: () => {
+        const { activeSession } = get();
+        return !!activeSession && !activeSession.isFinished;
+      },
+
+      startSession: ({
+        goalId,
+        goalName,
+        workDuration,
+        breakDuration,
+        longBreakDuration,
+        sessionsBeforeLongBreak,
+        totalPomodoros,
       }) => {
-        console.log('[FocusStore] startSession', { goalName, workDuration, totalPomodoros });
+        const { activeSession } = get();
+        if (activeSession && !activeSession.isFinished) {
+          console.log(
+            "[FocusStore] startSession — BLOCKED: active session exists for",
+            activeSession.goalName,
+          );
+          return false;
+        }
+        console.log("[FocusStore] startSession", {
+          goalName,
+          workDuration,
+          totalPomodoros,
+        });
         set({
           activeSession: {
             goalId,
             goalName,
-            phase: 'work',
+            phase: "work",
             startTime: Date.now(),
             duration: workDuration * 60,
             pomodorosCompleted: 0,
@@ -69,25 +95,36 @@ export const useFocusStore = create<FocusState>()(
             sessionsBeforeLongBreak,
           },
         });
+        return true;
+      },
+
+      discardAndStartSession: (params) => {
+        console.log(
+          "[FocusStore] discardAndStartSession — ending current, starting new",
+        );
+        set({ activeSession: null });
+        get().startSession(params);
       },
 
       completeSession: () => {
         const { activeSession } = get();
         if (!activeSession) return;
-        console.log('[FocusStore] completeSession — setting isFinished=true');
+        console.log("[FocusStore] completeSession — setting isFinished=true");
         set({ activeSession: { ...activeSession, isFinished: true } });
       },
 
       pauseSession: () => {
         const { activeSession } = get();
         if (!activeSession || activeSession.isPaused) {
-          console.log('[FocusStore] pauseSession — skipped (no session or already paused)');
+          console.log(
+            "[FocusStore] pauseSession — skipped (no session or already paused)",
+          );
           return;
         }
 
         const elapsed = (Date.now() - activeSession.startTime) / 1000;
         const remaining = Math.max(0, activeSession.duration - elapsed);
-        console.log('[FocusStore] pauseSession — remaining:', remaining);
+        console.log("[FocusStore] pauseSession — remaining:", remaining);
 
         set({
           activeSession: {
@@ -102,16 +139,24 @@ export const useFocusStore = create<FocusState>()(
       resumeSession: () => {
         const { activeSession } = get();
         if (!activeSession || !activeSession.isPaused) {
-          console.log('[FocusStore] resumeSession — skipped (not paused)');
+          console.log("[FocusStore] resumeSession — skipped (not paused)");
           return;
         }
-        console.log('[FocusStore] resumeSession — resuming with', activeSession.remainingTimeAtPause, 's remaining');
+        console.log(
+          "[FocusStore] resumeSession — resuming with",
+          activeSession.remainingTimeAtPause,
+          "s remaining",
+        );
 
         set({
           activeSession: {
             ...activeSession,
             isPaused: false,
-            startTime: Date.now() - (activeSession.duration - (activeSession.remainingTimeAtPause || 0)) * 1000,
+            startTime:
+              Date.now() -
+              (activeSession.duration -
+                (activeSession.remainingTimeAtPause || 0)) *
+                1000,
             pausedAt: undefined,
             remainingTimeAtPause: undefined,
           },
@@ -126,17 +171,20 @@ export const useFocusStore = create<FocusState>()(
         let nextDuration: number;
         let nextPomodorosCompleted = activeSession.pomodorosCompleted;
 
-        if (activeSession.phase === 'work') {
+        if (activeSession.phase === "work") {
           nextPomodorosCompleted += 1;
-          if (nextPomodorosCompleted % activeSession.sessionsBeforeLongBreak === 0) {
-            nextPhase = 'long-break';
+          if (
+            nextPomodorosCompleted % activeSession.sessionsBeforeLongBreak ===
+            0
+          ) {
+            nextPhase = "long-break";
             nextDuration = activeSession.longBreakDuration * 60;
           } else {
-            nextPhase = 'break';
+            nextPhase = "break";
             nextDuration = activeSession.breakDuration * 60;
           }
         } else {
-          nextPhase = 'work';
+          nextPhase = "work";
           nextDuration = activeSession.workDuration * 60;
         }
 
@@ -161,8 +209,12 @@ export const useFocusStore = create<FocusState>()(
           duration: activeSession.duration + additionalSeconds,
         };
 
-        if (activeSession.isPaused && activeSession.remainingTimeAtPause !== undefined) {
-          updates.remainingTimeAtPause = activeSession.remainingTimeAtPause + additionalSeconds;
+        if (
+          activeSession.isPaused &&
+          activeSession.remainingTimeAtPause !== undefined
+        ) {
+          updates.remainingTimeAtPause =
+            activeSession.remainingTimeAtPause + additionalSeconds;
         }
 
         set({
@@ -174,13 +226,13 @@ export const useFocusStore = create<FocusState>()(
       },
 
       endSession: () => {
-        console.log('[FocusStore] endSession — clearing activeSession');
+        console.log("[FocusStore] endSession — clearing activeSession");
         set({ activeSession: null });
       },
     }),
     {
-      name: 'focus-storage',
+      name: "focus-storage",
       storage: createJSONStorage(() => AsyncStorage),
-    }
-  )
+    },
+  ),
 );

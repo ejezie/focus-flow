@@ -1,23 +1,39 @@
-import React, { useMemo, useState, useCallback } from 'react';
-import { StyleSheet, View, Text, ScrollView, Dimensions, TouchableOpacity, RefreshControl } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useStatsStore } from '@/store/statsStore';
-import { useGoalStore } from '@/store/goalStore';
-import { LineChart, PieChart, ContributionGraph } from 'react-native-chart-kit';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import * as Haptics from 'expo-haptics';
+import { IconSymbol } from "@/components/ui/icon-symbol";
+import { Colors } from "@/constants/theme";
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useGoalStore } from "@/store/goalStore";
+import { useStatsStore } from "@/store/statsStore";
+import * as Haptics from "expo-haptics";
+import React, { useCallback, useMemo, useState } from "react";
+import {
+    Dimensions,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { ContributionGraph, LineChart, PieChart } from "react-native-chart-kit";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-const screenWidth = Dimensions.get('window').width;
+const screenWidth = Dimensions.get("window").width;
 
 export default function ProgressScreen() {
   const colorScheme = useColorScheme();
-  const theme = Colors[colorScheme ?? 'light'];
+  const theme = Colors[colorScheme ?? "light"];
   const [refreshing, setRefreshing] = useState(false);
-  
-  const { dailyHistory, goalStats, currentStreak, longestStreak, lifetimeMinutes } = useStatsStore();
+
+  const {
+    dailyHistory,
+    dailyGoalHistory,
+    goalStats,
+    currentStreak,
+    longestStreak,
+    lifetimeMinutes,
+  } = useStatsStore();
   const { goals } = useGoalStore();
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = last week, etc.
 
   const onRefresh = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -25,47 +41,82 @@ export default function ProgressScreen() {
     setTimeout(() => setRefreshing(false), 600);
   }, []);
 
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const today = useMemo(() => new Date().toISOString().split("T")[0], []);
   const todayMins = dailyHistory[today]?.minutes || 0;
   const todaySessions = dailyHistory[today]?.sessions || 0;
   const hasAnyData = lifetimeMinutes > 0;
 
-  // Last 7 days chart data
+  // Compute the 7 days for the selected week
+  const weekDates = useMemo(() => {
+    const dates: string[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() + weekOffset * 7 - i);
+      dates.push(d.toISOString().split("T")[0]);
+    }
+    return dates;
+  }, [weekOffset]);
+
+  // Date range label for the chart header
+  const weekRangeLabel = useMemo(() => {
+    if (weekDates.length === 0) return "";
+    const start = new Date(weekDates[0] + "T12:00:00");
+    const end = new Date(weekDates[weekDates.length - 1] + "T12:00:00");
+    const fmt = (d: Date) =>
+      d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return `${fmt(start)} – ${fmt(end)}`;
+  }, [weekDates]);
+
+  // Weekly chart data based on selected week
   const weeklyData = useMemo(() => {
     const labels: string[] = [];
     const data: number[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dayStr = d.toISOString().split('T')[0];
-      labels.push(d.toLocaleDateString('en-US', { weekday: 'short' }).charAt(0));
+    for (const dayStr of weekDates) {
+      const d = new Date(dayStr + "T12:00:00");
+      labels.push(
+        d.toLocaleDateString("en-US", { weekday: "short" }).charAt(0),
+      );
       data.push((dailyHistory[dayStr]?.minutes || 0) / 60);
     }
     // Ensure chart always has valid data (at least one non-zero value for rendering)
-    if (data.every(v => v === 0)) (data as any)[data.length - 1] = 0.01;
+    if (data.every((v) => v === 0)) (data as any)[data.length - 1] = 0.01;
     return { labels, datasets: [{ data }] };
-  }, [dailyHistory]);
+  }, [dailyHistory, weekDates]);
+
+  // Compute per-goal minutes for the selected week using dailyGoalHistory
+  const weekGoalMinutes = useMemo(() => {
+    const result: Record<string, number> = {};
+    for (const dayStr of weekDates) {
+      const dayGoals = dailyGoalHistory[dayStr];
+      if (dayGoals) {
+        for (const [goalId, mins] of Object.entries(dayGoals)) {
+          result[goalId] = (result[goalId] || 0) + mins;
+        }
+      }
+    }
+    return result;
+  }, [dailyGoalHistory, weekDates]);
 
   // Goal distribution pie chart
   const goalDistribution = useMemo(() => {
     return Object.values(goalStats)
-      .map(gs => {
-        const goal = goals.find(g => g.id === gs.goalId);
+      .map((gs) => {
+        const goal = goals.find((g) => g.id === gs.goalId);
         return {
-          name: goal?.title?.substring(0, 16) || 'Unknown',
+          name: goal?.title?.substring(0, 16) || "Unknown",
           minutes: gs.minutes,
           color: goal?.color || theme.icon,
           legendFontColor: theme.text,
           legendFontSize: 11,
         };
       })
-      .filter(g => g.minutes > 0)
+      .filter((g) => g.minutes > 0)
       .sort((a, b) => b.minutes - a.minutes);
   }, [goalStats, goals, theme]);
 
   // Heatmap data (ContributionGraph)
   const heatmapValues = useMemo(() => {
-    const values = Object.values(dailyHistory).map(h => ({
+    const values = Object.values(dailyHistory).map((h) => ({
       date: h.date,
       count: Math.ceil(h.minutes / 15),
     }));
@@ -79,35 +130,44 @@ export default function ProgressScreen() {
   // Best day this week
   const bestDay = useMemo(() => {
     const last7 = weeklyData.datasets[0].data;
-    const maxIndex = last7.reduce((iMax, x, i, arr) => x > arr[iMax] ? i : iMax, 0);
+    const maxIndex = last7.reduce(
+      (iMax, x, i, arr) => (x > arr[iMax] ? i : iMax),
+      0,
+    );
     const d = new Date();
     d.setDate(d.getDate() - (6 - maxIndex));
     return {
       hours: last7[maxIndex],
-      day: d.toLocaleDateString('en-US', { weekday: 'long' })
+      day: d.toLocaleDateString("en-US", { weekday: "long" }),
     };
   }, [weeklyData]);
 
-  const weeklyTotal = useMemo(() => 
-    weeklyData.datasets[0].data.reduce((a, b) => a + b, 0),
-    [weeklyData]
+  const weeklyTotal = useMemo(
+    () => weeklyData.datasets[0].data.reduce((a, b) => a + b, 0),
+    [weeklyData],
   );
 
-  const chartConfig = useMemo(() => ({
-    backgroundGradientFrom: theme.card,
-    backgroundGradientTo: theme.card,
-    color: (opacity = 1) => `rgba(99, 102, 241, ${opacity})`,
-    labelColor: () => theme.icon,
-    strokeWidth: 2,
-    barPercentage: 0.5,
-    useShadowColorFromDataset: false,
-    decimalPlaces: 1,
-  }), [theme]);
+  const chartConfig = useMemo(
+    () => ({
+      backgroundGradientFrom: theme.card,
+      backgroundGradientTo: theme.card,
+      color: (opacity = 1) => `rgba(99, 102, 241, ${opacity})`,
+      labelColor: () => theme.icon,
+      strokeWidth: 2,
+      barPercentage: 0.5,
+      useShadowColorFromDataset: false,
+      decimalPlaces: 1,
+    }),
+    [theme],
+  );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent} 
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.background }]}
+      edges={["top"]}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -119,192 +179,300 @@ export default function ProgressScreen() {
         }
       >
         <View style={styles.header}>
-            <Text style={[styles.title, { color: theme.text }]}>Progress</Text>
-            <Text style={[styles.subtitle, { color: theme.icon }]}>
-              {hasAnyData ? 'Track your journey to focus' : 'Start focusing to see your progress'}
-            </Text>
+          <Text style={[styles.title, { color: theme.text }]}>Progress</Text>
+          <Text style={[styles.subtitle, { color: theme.icon }]}>
+            {hasAnyData
+              ? "Track your journey to focus"
+              : "Start focusing to see your progress"}
+          </Text>
         </View>
 
         {/* Today's Overview */}
         <View style={styles.overviewGrid} accessibilityRole="summary">
-            <View style={[styles.statCard, { backgroundColor: theme.card }]}>
-                <View style={styles.statHeader}>
-                    <IconSymbol name="timer" size={16} color={theme.primary} />
-                    <Text style={[styles.statLabel, { color: theme.icon }]}>TODAY</Text>
-                </View>
-                <Text style={[styles.statValue, { color: theme.text }]}>
-                    {Math.round(todayMins / 60 * 10) / 10}h
-                </Text>
-                <Text style={[styles.statSub, { color: theme.icon }]}>
-                  {todaySessions} session{todaySessions !== 1 ? 's' : ''}
-                </Text>
+          <View style={[styles.statCard, { backgroundColor: theme.card }]}>
+            <View style={styles.statHeader}>
+              <IconSymbol name="timer" size={16} color={theme.primary} />
+              <Text style={[styles.statLabel, { color: theme.icon }]}>
+                TODAY
+              </Text>
             </View>
+            <Text style={[styles.statValue, { color: theme.text }]}>
+              {Math.round((todayMins / 60) * 10) / 10}h
+            </Text>
+            <Text style={[styles.statSub, { color: theme.icon }]}>
+              {todaySessions} session{todaySessions !== 1 ? "s" : ""}
+            </Text>
+          </View>
 
-            <View style={[styles.statCard, { backgroundColor: theme.card }]}>
-                <View style={styles.statHeader}>
-                    <IconSymbol name="bolt.fill" size={16} color="#FBBF24" />
-                    <Text style={[styles.statLabel, { color: theme.icon }]}>STREAK</Text>
-                </View>
-                <Text style={[styles.statValue, { color: theme.text }]}>{currentStreak}d</Text>
-                <Text style={[styles.statSub, { color: theme.icon }]}>Best: {longestStreak}d</Text>
+          <View style={[styles.statCard, { backgroundColor: theme.card }]}>
+            <View style={styles.statHeader}>
+              <IconSymbol name="bolt.fill" size={16} color="#FBBF24" />
+              <Text style={[styles.statLabel, { color: theme.icon }]}>
+                STREAK
+              </Text>
             </View>
+            <Text style={[styles.statValue, { color: theme.text }]}>
+              {currentStreak}d
+            </Text>
+            <Text style={[styles.statSub, { color: theme.icon }]}>
+              Best: {longestStreak}d
+            </Text>
+          </View>
         </View>
 
-        {/* Weekly Chart */}
         <View style={[styles.chartContainer, { backgroundColor: theme.card }]}>
-            <View style={styles.chartHeader}>
-                <Text style={[styles.chartTitle, { color: theme.text }]}>Weekly Focus Hours</Text>
-                <Text style={[styles.chartValue, { color: theme.primary }]}>
-                     {weeklyTotal.toFixed(1)}h Total
-                </Text>
+          <View style={styles.chartHeader}>
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setWeekOffset((prev) => prev - 1);
+              }}
+              style={styles.weekNavBtn}
+            >
+              <IconSymbol name="chevron.left" size={18} color={theme.primary} />
+            </TouchableOpacity>
+            <View style={{ flex: 1, alignItems: "center" }}>
+              <Text style={[styles.chartTitle, { color: theme.text }]}>
+                Weekly Focus Hours
+              </Text>
+              <Text style={[styles.weekRangeLabel, { color: theme.icon }]}>
+                {weekRangeLabel}
+              </Text>
             </View>
-            <LineChart
-                data={weeklyData}
-                width={screenWidth - 72}
-                height={180}
-                chartConfig={chartConfig}
-                bezier
-                style={styles.chart}
-                withInnerLines={false}
-                withOuterLines={false}
-            />
-            {bestDay.hours > 0.01 && (
-              <View style={styles.bestDayBox}>
-                  <IconSymbol name="trophy.fill" size={14} color="#FBBF24" />
-                  <Text style={[styles.bestDayText, { color: theme.icon }]}>
-                      Best: <Text style={{fontWeight: 'bold', color: theme.text}}>{bestDay.day}</Text> ({bestDay.hours.toFixed(1)}h)
-                  </Text>
-              </View>
-            )}
+            <TouchableOpacity
+              onPress={() => {
+                if (weekOffset < 0) {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setWeekOffset((prev) => prev + 1);
+                }
+              }}
+              style={styles.weekNavBtn}
+              disabled={weekOffset >= 0}
+            >
+              <IconSymbol
+                name="chevron.right"
+                size={18}
+                color={weekOffset >= 0 ? `${theme.icon}44` : theme.primary}
+              />
+            </TouchableOpacity>
+          </View>
+          <Text
+            style={[
+              styles.chartValue,
+              { color: theme.primary, textAlign: "center", marginBottom: 8 },
+            ]}
+          >
+            {weeklyTotal.toFixed(1)}h Total
+          </Text>
+          <LineChart
+            data={weeklyData}
+            width={screenWidth - 72}
+            height={180}
+            chartConfig={chartConfig}
+            bezier
+            style={styles.chart}
+            withInnerLines={false}
+            withOuterLines={false}
+          />
+          {bestDay.hours > 0.01 && (
+            <View style={styles.bestDayBox}>
+              <IconSymbol name="trophy.fill" size={14} color="#FBBF24" />
+              <Text style={[styles.bestDayText, { color: theme.icon }]}>
+                Best:{" "}
+                <Text style={{ fontWeight: "bold", color: theme.text }}>
+                  {bestDay.day}
+                </Text>{" "}
+                ({bestDay.hours.toFixed(1)}h)
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Goal Progress */}
         <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Goal Progress</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>
+            Goal Progress
+          </Text>
         </View>
 
-        <View style={[styles.goalProgressCard, { backgroundColor: theme.card }]}>
-            {goals.length > 0 ? (
-                goals.map(goal => {
-                    const minutes = goalStats[goal.id]?.minutes || 0;
-                    const targetMinutes = goal.weeklyHours * 60;
-                    const progress = targetMinutes > 0 ? Math.min(1, minutes / targetMinutes) : 0;
-                    return (
-                        <View key={goal.id} style={styles.goalRow} accessibilityLabel={`${goal.title}: ${Math.round(progress * 100)}% complete`}>
-                            <View style={styles.goalInfo}>
-                                <Text style={[styles.goalLabel, { color: theme.text }]} numberOfLines={1}>{goal.title}</Text>
-                                <Text style={[styles.goalPercent, { color: theme.icon }]}>
-                                    {Math.round(progress * 100)}% • {Math.round(minutes / 60 * 10) / 10}h / {goal.weeklyHours}h
-                                </Text>
-                            </View>
-                            <View style={[styles.progressBarBg, { backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
-                                <View 
-                                    style={[
-                                        styles.progressBarFill, 
-                                        { backgroundColor: goal.color, width: `${Math.max(progress * 100, 1)}%` }
-                                    ]} 
-                                />
-                            </View>
-                        </View>
-                    );
-                })
-            ) : (
-                <View style={styles.emptyInner}>
-                    <IconSymbol name="flag.fill" size={32} color={theme.icon} style={{ opacity: 0.4, marginBottom: 8 }} />
-                    <Text style={[styles.emptyText, { color: theme.icon }]}>Create goals to track weekly progress</Text>
+        <View
+          style={[styles.goalProgressCard, { backgroundColor: theme.card }]}
+        >
+          {goals.length > 0 ? (
+            goals.map((goal) => {
+              const minutes =
+                weekOffset === 0
+                  ? goalStats[goal.id]?.minutes || 0
+                  : weekGoalMinutes[goal.id] || 0;
+              const targetMinutes = goal.weeklyHours * 60;
+              const progress =
+                targetMinutes > 0 ? Math.min(1, minutes / targetMinutes) : 0;
+              return (
+                <View
+                  key={goal.id}
+                  style={styles.goalRow}
+                  accessibilityLabel={`${goal.title}: ${Math.round(progress * 100)}% complete`}
+                >
+                  <View style={styles.goalInfo}>
+                    <Text
+                      style={[styles.goalLabel, { color: theme.text }]}
+                      numberOfLines={1}
+                    >
+                      {goal.title}
+                    </Text>
+                    <Text style={[styles.goalPercent, { color: theme.icon }]}>
+                      {Math.round(progress * 100)}% •{" "}
+                      {Math.round((minutes / 60) * 10) / 10}h /{" "}
+                      {goal.weeklyHours}h
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.progressBarBg,
+                      {
+                        backgroundColor:
+                          colorScheme === "dark"
+                            ? "rgba(255,255,255,0.08)"
+                            : "rgba(0,0,0,0.05)",
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.progressBarFill,
+                        {
+                          backgroundColor: goal.color,
+                          width: `${Math.max(progress * 100, 1)}%`,
+                        },
+                      ]}
+                    />
+                  </View>
                 </View>
-            )}
+              );
+            })
+          ) : (
+            <View style={styles.emptyInner}>
+              <IconSymbol
+                name="flag.fill"
+                size={32}
+                color={theme.icon}
+                style={{ opacity: 0.4, marginBottom: 8 }}
+              />
+              <Text style={[styles.emptyText, { color: theme.icon }]}>
+                Create goals to track weekly progress
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Analytics */}
         <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Analytics</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>
+            Analytics
+          </Text>
         </View>
 
         {goalDistribution.length > 0 ? (
-            <View style={[styles.pieCard, { backgroundColor: theme.card }]}>
-                <Text style={[styles.cardTitle, { color: theme.text }]}>Time Distribution</Text>
-                <PieChart
-                    data={goalDistribution}
-                    width={screenWidth - 40}
-                    height={180}
-                    chartConfig={chartConfig}
-                    accessor={"minutes"}
-                    backgroundColor={"transparent"}
-                    paddingLeft={"15"}
-                    center={[10, 0]}
-                    absolute
-                />
-            </View>
+          <View style={[styles.pieCard, { backgroundColor: theme.card }]}>
+            <Text style={[styles.cardTitle, { color: theme.text }]}>
+              Time Distribution
+            </Text>
+            <PieChart
+              data={goalDistribution}
+              width={screenWidth - 40}
+              height={180}
+              chartConfig={chartConfig}
+              accessor={"minutes"}
+              backgroundColor={"transparent"}
+              paddingLeft={"15"}
+              center={[10, 0]}
+              absolute
+            />
+          </View>
         ) : (
-            <View style={[styles.emptyCard, { backgroundColor: theme.card }]}>
-                <IconSymbol name="chart.bar.fill" size={36} color={theme.icon} style={{ opacity: 0.4, marginBottom: 12 }} />
-                <Text style={[styles.emptyText, { color: theme.icon }]}>Complete focus sessions to see distribution</Text>
-            </View>
+          <View style={[styles.emptyCard, { backgroundColor: theme.card }]}>
+            <IconSymbol
+              name="chart.bar.fill"
+              size={36}
+              color={theme.icon}
+              style={{ opacity: 0.4, marginBottom: 12 }}
+            />
+            <Text style={[styles.emptyText, { color: theme.icon }]}>
+              Complete focus sessions to see distribution
+            </Text>
+          </View>
         )}
 
         {/* Heatmap */}
         {hasAnyData && (
           <View style={[styles.heatmapCard, { backgroundColor: theme.card }]}>
-              <Text style={[styles.cardTitle, { color: theme.text }]}>Focus Intensity</Text>
-              <ContributionGraph
-                  values={heatmapValues}
-                  endDate={new Date()}
-                  numDays={105}
-                  width={screenWidth - 40}
-                  height={220}
-                  chartConfig={{
-                      ...chartConfig,
-                      color: (opacity = 1) => `rgba(99, 102, 241, ${opacity})`,
-                  }}
-                  tooltipDataAttrs={() => ({})}
-              />
+            <Text style={[styles.cardTitle, { color: theme.text }]}>
+              Focus Intensity
+            </Text>
+            <ContributionGraph
+              values={heatmapValues}
+              endDate={new Date()}
+              numDays={105}
+              width={screenWidth - 40}
+              height={220}
+              chartConfig={{
+                ...chartConfig,
+                color: (opacity = 1) => `rgba(99, 102, 241, ${opacity})`,
+              }}
+              tooltipDataAttrs={() => ({})}
+            />
           </View>
         )}
 
         {/* Lifetime */}
         <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Achievements</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>
+            Achievements
+          </Text>
         </View>
 
         <View style={[styles.statsRow, { backgroundColor: theme.card }]}>
-            <View style={styles.lifetimeStat}>
-                <Text style={[styles.lifetimeValue, { color: theme.text }]}>
-                    {Math.round(lifetimeMinutes / 60)}
-                </Text>
-                <Text style={[styles.lifetimeLabel, { color: theme.icon }]}>LIFETIME HOURS</Text>
-            </View>
-            <View style={styles.vDivider} />
-            <View style={styles.lifetimeStat}>
-                <Text style={[styles.lifetimeValue, { color: theme.text }]}>
-                    {Object.keys(dailyHistory).length}
-                </Text>
-                <Text style={[styles.lifetimeLabel, { color: theme.icon }]}>TOTAL DAYS</Text>
-            </View>
+          <View style={styles.lifetimeStat}>
+            <Text style={[styles.lifetimeValue, { color: theme.text }]}>
+              {Math.round(lifetimeMinutes / 60)}
+            </Text>
+            <Text style={[styles.lifetimeLabel, { color: theme.icon }]}>
+              LIFETIME HOURS
+            </Text>
+          </View>
+          <View style={styles.vDivider} />
+          <View style={styles.lifetimeStat}>
+            <Text style={[styles.lifetimeValue, { color: theme.text }]}>
+              {Object.keys(dailyHistory).length}
+            </Text>
+            <Text style={[styles.lifetimeLabel, { color: theme.icon }]}>
+              TOTAL DAYS
+            </Text>
+          </View>
         </View>
 
         <View style={styles.achievementsGrid}>
-            <AchievementBadge 
-                icon="flag.fill" 
-                color="#6366F1" 
-                label="First Step" 
-                unlocked={lifetimeMinutes > 0} 
-                sub="Complete 1 session"
-            />
-             <AchievementBadge 
-                icon="flame.fill" 
-                color="#EF4444" 
-                label="On Fire" 
-                unlocked={currentStreak >= 7} 
-                sub="7 day streak"
-            />
-             <AchievementBadge 
-                icon="star.fill" 
-                color="#FBBF24" 
-                label="Master" 
-                unlocked={lifetimeMinutes >= 6000} 
-                sub="100 hours focused"
-            />
+          <AchievementBadge
+            icon="flag.fill"
+            color="#6366F1"
+            label="First Step"
+            unlocked={lifetimeMinutes > 0}
+            sub="Complete 1 session"
+          />
+          <AchievementBadge
+            icon="flame.fill"
+            color="#EF4444"
+            label="On Fire"
+            unlocked={currentStreak >= 7}
+            sub="7 day streak"
+          />
+          <AchievementBadge
+            icon="star.fill"
+            color="#FBBF24"
+            label="Master"
+            unlocked={lifetimeMinutes >= 6000}
+            sub="100 hours focused"
+          />
         </View>
 
         <View style={{ height: 100 }} />
@@ -313,23 +481,37 @@ export default function ProgressScreen() {
   );
 }
 
-const AchievementBadge = React.memo(function AchievementBadge({ icon, color, label, unlocked, sub }: any) {
-    const colorScheme = useColorScheme();
-    const theme = Colors[colorScheme ?? 'light'];
-    
-    return (
-        <View 
-          style={[styles.achievementCard, { backgroundColor: theme.card, opacity: unlocked ? 1 : 0.4 }]}
-          accessibilityLabel={`${label}: ${unlocked ? 'Unlocked' : 'Locked'}. ${sub}`}
-        >
-            <View style={[styles.badgeIcon, { backgroundColor: unlocked ? color : theme.icon }]}>
-                <IconSymbol name={icon} size={20} color="#FFF" />
-            </View>
-            <Text style={[styles.badgeLabel, { color: theme.text }]}>{label}</Text>
-            <Text style={[styles.badgeSub, { color: theme.icon }]}>{sub}</Text>
-            {!unlocked && <View style={styles.lockedOverlay} />}
-        </View>
-    );
+const AchievementBadge = React.memo(function AchievementBadge({
+  icon,
+  color,
+  label,
+  unlocked,
+  sub,
+}: any) {
+  const colorScheme = useColorScheme();
+  const theme = Colors[colorScheme ?? "light"];
+
+  return (
+    <View
+      style={[
+        styles.achievementCard,
+        { backgroundColor: theme.card, opacity: unlocked ? 1 : 0.4 },
+      ]}
+      accessibilityLabel={`${label}: ${unlocked ? "Unlocked" : "Locked"}. ${sub}`}
+    >
+      <View
+        style={[
+          styles.badgeIcon,
+          { backgroundColor: unlocked ? color : theme.icon },
+        ]}
+      >
+        <IconSymbol name={icon} size={20} color="#FFF" />
+      </View>
+      <Text style={[styles.badgeLabel, { color: theme.text }]}>{label}</Text>
+      <Text style={[styles.badgeSub, { color: theme.icon }]}>{sub}</Text>
+      {!unlocked && <View style={styles.lockedOverlay} />}
+    </View>
+  );
 });
 
 const styles = StyleSheet.create({
@@ -344,14 +526,14 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   subtitle: {
     fontSize: 14,
     marginTop: 4,
   },
   overviewGrid: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 16,
     marginBottom: 24,
   },
@@ -359,31 +541,31 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
     borderRadius: 24,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 3,
   },
   statHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 12,
   },
   statLabel: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1,
     marginLeft: 6,
   },
   statValue: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   statSub: {
     fontSize: 12,
     marginTop: 2,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   chartContainer: {
     padding: 24,
@@ -391,31 +573,40 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   chartHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
   },
   chartTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   chartValue: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   chart: {
     marginVertical: 8,
     borderRadius: 16,
     marginLeft: -20,
   },
+  weekNavBtn: {
+    padding: 8,
+    borderRadius: 12,
+  },
+  weekRangeLabel: {
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: "500",
+  },
   bestDayBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
+    borderTopColor: "rgba(0,0,0,0.05)",
   },
   bestDayText: {
     fontSize: 13,
@@ -430,40 +621,40 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   goalInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   goalLabel: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     flex: 1,
     marginRight: 8,
   },
   goalPercent: {
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   progressBarBg: {
     height: 8,
     borderRadius: 4,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   progressBarFill: {
-    height: '100%',
+    height: "100%",
     borderRadius: 4,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
     marginTop: 8,
   },
   sectionTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   pieCard: {
     padding: 20,
@@ -472,90 +663,90 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginBottom: 16,
   },
   heatmapCard: {
     padding: 20,
     borderRadius: 24,
     marginBottom: 24,
-    alignItems: 'center',
+    alignItems: "center",
   },
   statsRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     borderRadius: 24,
     padding: 24,
     marginBottom: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
   lifetimeStat: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
   },
   lifetimeValue: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   lifetimeLabel: {
     fontSize: 10,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     letterSpacing: 1,
     marginTop: 4,
   },
   vDivider: {
     width: 1,
     height: 40,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: "rgba(0,0,0,0.05)",
   },
   achievementsGrid: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
   },
   achievementCard: {
     flex: 1,
     padding: 16,
     borderRadius: 20,
-    alignItems: 'center',
-    position: 'relative',
-    overflow: 'hidden',
+    alignItems: "center",
+    position: "relative",
+    overflow: "hidden",
     minHeight: 110,
   },
   badgeIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 10,
   },
   badgeLabel: {
     fontSize: 13,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: "bold",
+    textAlign: "center",
   },
   badgeSub: {
     fontSize: 10,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: 2,
   },
   lockedOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    backgroundColor: "rgba(0,0,0,0.05)",
   },
   emptyCard: {
     padding: 40,
     borderRadius: 24,
     marginBottom: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyInner: {
     padding: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
   emptyText: {
     fontSize: 14,
-    textAlign: 'center',
-    fontStyle: 'italic',
-  }
+    textAlign: "center",
+    fontStyle: "italic",
+  },
 });
